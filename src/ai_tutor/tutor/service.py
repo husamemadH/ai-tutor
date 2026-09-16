@@ -77,6 +77,18 @@ def _dedupe(chunks: list[Chunk]) -> list[Chunk]:
 
 
 _CARRIED_LIMIT = 12
+_PINNED_LIMIT = 8
+_CONTEXT_LIMIT = 15
+
+
+def _chunks_by_ids(db: Session, ids: list[str], limit: int) -> list[Chunk]:
+    try:
+        keys = [uuid.UUID(value) for value in dict.fromkeys(ids)]
+    except ValueError:
+        return []
+    if not keys:
+        return []
+    return list(db.scalars(select(Chunk).where(Chunk.id.in_(keys[:limit]))))
 
 
 def _carried_chunks(db: Session, history: list[Message]) -> list[Chunk]:
@@ -86,14 +98,7 @@ def _carried_chunks(db: Session, history: list[Message]) -> list[Chunk]:
         if message.role == "assistant" and message.source_chunk_ids:
             ids.extend(message.source_chunk_ids)
             break
-    if not ids:
-        return []
-    try:
-        keys = [uuid.UUID(value) for value in dict.fromkeys(ids)]
-    except ValueError:
-        return []
-    keys = keys[:_CARRIED_LIMIT]
-    return list(db.scalars(select(Chunk).where(Chunk.id.in_(keys))))
+    return _chunks_by_ids(db, ids, _CARRIED_LIMIT)
 
 
 def _prepare(
@@ -107,7 +112,8 @@ def _prepare(
     """Retrieve context and build the message list for one turn.
 
     Returns (messages, context_chunks, fresh_chunks); only fresh chunks are persisted
-    as this turn's sources, so carried context never accumulates across turns.
+    as this turn's sources, so carried context never accumulates across turns. Chunks
+    from explicitly requested pages are pinned to the session for the conversation.
     """
     settings = get_settings()
     history = memory.get_context(db, session.id, settings.memory_window_turns)
@@ -116,6 +122,7 @@ def _prepare(
     if page is not None:
         pages.add(page)
 
+    pinned = _chunks_by_ids(db, list(session.pinned_chunk_ids or []), _PINNED_LIMIT)
     carried = _carried_chunks(db, history)
     fresh: list[Chunk] = []
     if session.book_id is not None:
@@ -128,7 +135,14 @@ def _prepare(
         )
         page_chunks = retrieve_by_pages(db, book_id=session.book_id, pages=sorted(pages))
         fresh = _dedupe([*page_chunks, *semantic])
-    chunks = _dedupe([*carried, *fresh])
+        if page_chunks:
+            owned = list(session.pinned_chunk_ids or [])
+            for chunk in page_chunks:
+                if str(chunk.id) not in owned:
+                    owned.append(str(chunk.id))
+            session.pinned_chunk_ids = owned[-_PINNED_LIMIT:]
+            pinned = _dedupe([*pinned, *page_chunks])
+    chunks = _dedupe([*pinned, *fresh, *carried])[:_CONTEXT_LIMIT]
 
     book = db.get(Book, session.book_id) if session.book_id else None
     messages: list[dict[str, str]] = [

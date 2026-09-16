@@ -59,6 +59,7 @@ class ChatSession(Base):
     book_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("books.id", ondelete="SET NULL"), index=True, nullable=True
     )
+    pinned_chunk_ids: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     messages: Mapped[list["Message"]] = relationship(
