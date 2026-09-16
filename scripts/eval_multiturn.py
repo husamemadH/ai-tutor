@@ -14,6 +14,7 @@ from ai_tutor.tutor.service import answer
 
 JUDGE_MODEL = "google/gemini-3.8-flash"
 MAX_CHUNKS = 15
+PER_BOOK = 7
 
 TURNS = [
     "اشرحلي باختصار اللي في صفحة {page}",
@@ -35,10 +36,13 @@ def parse_json(text: str) -> dict:
     return json.loads(match.group(0)) if match else {}
 
 
-def pick_page(chunks: list[Chunk]) -> Chunk | None:
+def pick_pages(chunks: list[Chunk], n: int) -> list[Chunk]:
     candidates = [c for c in chunks if c.printed_page and len(c.content) > 500]
     candidates.sort(key=lambda c: c.page_start or 0)
-    return candidates[len(candidates) // 2] if candidates else None
+    if len(candidates) <= n:
+        return candidates
+    step = len(candidates) / n
+    return [candidates[int(i * step)] for i in range(n)]
 
 
 def judge(client, question: str, excerpts: str, reply: str) -> dict:
@@ -69,30 +73,28 @@ def main() -> None:
         books = [b for b in list_books(db) if b.grade == "8"]
         for book in books:
             chunks = list(db.scalars(select(Chunk).where(Chunk.book_id == book.id)))
-            page = pick_page(chunks)
-            if page is None:
-                continue
-            session = memory.create_session(
-                db, grade=book.grade, subject=book.subject, book_id=book.id, title=book.title
-            )
-            for index, template in enumerate(TURNS):
-                message = template.format(page=page.printed_page)
-                reply = answer(db, session=session, user_message=message)
-                max_chunks = max(max_chunks, len(reply.sources))
-                pages = [c.display_page for c in reply.sources]
-                if index > 0:
-                    retention_total += 1
-                    if page.printed_page in pages:
-                        retention_hits += 1
-                if index == 1:
-                    excerpts = "\n".join(
-                        f"[صفحة {c.display_page}]\n{c.content}" for c in reply.sources
-                    )[:6000]
-                    verdict = judge(client, message, excerpts, reply.text[:1500])
-                    judged += 1
-                    grounded += bool(verdict.get("grounded"))
-                    dialect += bool(verdict.get("dialect"))
-            print(f"{book.subject:10s} target page {page.printed_page} done")
+            for page in pick_pages(chunks, PER_BOOK):
+                session = memory.create_session(
+                    db, grade=book.grade, subject=book.subject, book_id=book.id, title=book.title
+                )
+                for index, template in enumerate(TURNS):
+                    message = template.format(page=page.printed_page)
+                    reply = answer(db, session=session, user_message=message)
+                    max_chunks = max(max_chunks, len(reply.sources))
+                    pages = [c.display_page for c in reply.sources]
+                    if index > 0:
+                        retention_total += 1
+                        if page.printed_page in pages:
+                            retention_hits += 1
+                    if index == 1:
+                        excerpts = "\n".join(
+                            f"[صفحة {c.display_page}]\n{c.content}" for c in reply.sources
+                        )[:6000]
+                        verdict = judge(client, message, excerpts, reply.text[:1500])
+                        judged += 1
+                        grounded += bool(verdict.get("grounded"))
+                        dialect += bool(verdict.get("dialect"))
+                print(f"{book.subject:10s} page {page.printed_page} done", flush=True)
 
     retention = retention_hits / retention_total if retention_total else 0.0
     print(
