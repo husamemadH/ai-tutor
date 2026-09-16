@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -12,7 +13,10 @@ _SENTENCE_END = (".", "!", "?", "؟", "۔", ":", "؛", "،")
 
 
 def normalize_arabic(text: str) -> str:
-    """Strip diacritics/tatweel and collapse whitespace so variants match."""
+    """Normalize to standard Arabic: NFKC (fixes presentation forms), strip
+    diacritics/tatweel, drop unmapped glyphs, collapse whitespace."""
+    text = unicodedata.normalize("NFKC", text)
+    text = text.replace("\ufffd", "")
     text = text.replace(_TATWEEL, "")
     text = _ARABIC_DIACRITICS.sub("", text)
     text = _MULTISPACE.sub(" ", text)

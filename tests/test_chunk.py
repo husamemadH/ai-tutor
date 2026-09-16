@@ -7,6 +7,15 @@ def test_normalize_strips_diacritics_and_tatweel():
     assert normalize_arabic("كتـــاب") == "كتاب"
 
 
+def test_normalize_converts_presentation_forms():
+    assert normalize_arabic("اﻟﻀﺒﻂ واﻟﺘﻨﻈﻴﻢ") == "الضبط والتنظيم"
+    assert normalize_arabic("ﻻ") == "لا"
+
+
+def test_normalize_drops_replacement_chars():
+    assert normalize_arabic("نصّ\ufffd هنا") == "نص هنا"
+
+
 def test_headings_start_new_sections():
     pages = [
         Page(1, "الخلية\n\nالخلية هي وحدة البناء الأساسية."),
