@@ -1,7 +1,9 @@
 import re
+import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ai_tutor.config import get_settings
@@ -74,6 +76,22 @@ def _dedupe(chunks: list[Chunk]) -> list[Chunk]:
     return result
 
 
+def _carried_chunks(db: Session, history: list[Message]) -> list[Chunk]:
+    """Re-fetch chunks from the previous assistant turn so follow-ups keep context."""
+    ids: list[str] = []
+    for message in reversed(history):
+        if message.role == "assistant" and message.source_chunk_ids:
+            ids.extend(message.source_chunk_ids)
+            break
+    if not ids:
+        return []
+    try:
+        keys = [uuid.UUID(value) for value in dict.fromkeys(ids)]
+    except ValueError:
+        return []
+    return list(db.scalars(select(Chunk).where(Chunk.id.in_(keys))))
+
+
 def _prepare(
     db: Session,
     *,
@@ -90,7 +108,7 @@ def _prepare(
     if page is not None:
         pages.add(page)
 
-    chunks: list[Chunk] = []
+    chunks: list[Chunk] = _carried_chunks(db, history)
     if session.book_id is not None:
         query_vector = EmbeddingClient().embed_one(_retrieval_query(history, user_message))
         semantic = retrieve(
@@ -100,7 +118,7 @@ def _prepare(
             top_k=top_k or settings.retrieval_top_k,
         )
         page_chunks = retrieve_by_pages(db, book_id=session.book_id, pages=sorted(pages))
-        chunks = _dedupe([*page_chunks, *semantic])
+        chunks = _dedupe([*chunks, *page_chunks, *semantic])
 
     book = db.get(Book, session.book_id) if session.book_id else None
     messages: list[dict[str, str]] = [
@@ -132,7 +150,9 @@ def answer(
     )
     text = ChatClient().complete(messages)
     memory.append_message(db, session.id, "user", user_message)
-    memory.append_message(db, session.id, "assistant", text)
+    memory.append_message(
+        db, session.id, "assistant", text, [str(chunk.id) for chunk in chunks]
+    )
     return TutorReply(text=text, sources=chunks)
 
 
@@ -157,4 +177,6 @@ def answer_stream(
 
     text = "".join(parts)
     memory.append_message(db, session.id, "user", user_message)
-    memory.append_message(db, session.id, "assistant", text)
+    memory.append_message(
+        db, session.id, "assistant", text, [str(chunk.id) for chunk in chunks]
+    )

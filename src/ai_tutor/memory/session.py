@@ -35,8 +35,19 @@ def get_context(db: Session, session_id: uuid.UUID, limit: int) -> list[Message]
     return list(reversed(list(db.scalars(stmt))))
 
 
-def append_message(db: Session, session_id: uuid.UUID, role: str, content: str) -> Message:
-    message = Message(session_id=session_id, role=role, content=content)
+def append_message(
+    db: Session,
+    session_id: uuid.UUID,
+    role: str,
+    content: str,
+    source_chunk_ids: list[str] | None = None,
+) -> Message:
+    message = Message(
+        session_id=session_id,
+        role=role,
+        content=content,
+        source_chunk_ids=source_chunk_ids,
+    )
     db.add(message)
     db.flush()
     return message
