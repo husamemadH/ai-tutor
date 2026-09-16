@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from ai_tutor.embeddings import EmbeddingClient
 from ai_tutor.ingest.chunk import TextChunk, chunk_pages
+from ai_tutor.ingest.ocr import OcrClient
 from ai_tutor.ingest.parse import Page, parse_pdf
 from ai_tutor.models import Book, Chunk
 
@@ -67,9 +68,10 @@ def ingest_book(
     subject: str,
     title: str | None = None,
     batch_size: int = 64,
+    ocr: bool = True,
 ) -> tuple[Book, int]:
-    """Parse a PDF, then chunk -> embed -> store."""
-    pages = parse_pdf(pdf_path)
+    """OCR (default) or text-layer parse, then chunk -> embed -> store."""
+    pages = OcrClient().ocr_pdf(pdf_path) if ocr else parse_pdf(pdf_path)
     return ingest_pages(
         db,
         pages=pages,

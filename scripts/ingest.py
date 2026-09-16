@@ -17,8 +17,9 @@ def main(
     grade: Annotated[str, typer.Option(help="Grade metadata, e.g. 4")],
     subject: Annotated[str, typer.Option(help="Subject metadata, e.g. science")],
     title: Annotated[str, typer.Option(help="Book title (defaults to filename)")] = "",
+    ocr: Annotated[bool, typer.Option(help="Transcribe pages with vision OCR")] = True,
 ) -> None:
-    """Parse -> chunk -> embed -> store a PDF."""
+    """OCR (default) or parse -> chunk -> embed -> store a PDF."""
     with session_scope() as db:
         book, count = ingest_book(
             db,
@@ -26,8 +27,10 @@ def main(
             grade=grade,
             subject=subject,
             title=title or pdf.stem,
+            ocr=ocr,
         )
-    console.print(f"[green]Ingested[/green] '{book.title}' ({book.id})")
+    mode = "OCR" if ocr else "text-layer"
+    console.print(f"[green]Ingested[/green] '{book.title}' ({book.id}) via {mode}")
     console.print(f"chunks: {count}  grade: {book.grade}  subject: {book.subject}")
 
 
