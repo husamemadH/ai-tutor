@@ -161,6 +161,7 @@ async function send() {
 
 sendBtn.onclick = send;
 newBtn.onclick = newSession;
+bookSel.addEventListener("change", newSession);
 input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
 });
