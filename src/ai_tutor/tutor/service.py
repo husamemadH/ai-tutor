@@ -76,6 +76,9 @@ def _dedupe(chunks: list[Chunk]) -> list[Chunk]:
     return result
 
 
+_CARRIED_LIMIT = 12
+
+
 def _carried_chunks(db: Session, history: list[Message]) -> list[Chunk]:
     """Re-fetch chunks from the previous assistant turn so follow-ups keep context."""
     ids: list[str] = []
@@ -89,6 +92,7 @@ def _carried_chunks(db: Session, history: list[Message]) -> list[Chunk]:
         keys = [uuid.UUID(value) for value in dict.fromkeys(ids)]
     except ValueError:
         return []
+    keys = keys[:_CARRIED_LIMIT]
     return list(db.scalars(select(Chunk).where(Chunk.id.in_(keys))))
 
 
@@ -99,8 +103,12 @@ def _prepare(
     user_message: str,
     top_k: int | None,
     page: int | None,
-) -> tuple[list[dict[str, str]], list[Chunk]]:
-    """Retrieve context and build the message list for one turn."""
+) -> tuple[list[dict[str, str]], list[Chunk], list[Chunk]]:
+    """Retrieve context and build the message list for one turn.
+
+    Returns (messages, context_chunks, fresh_chunks); only fresh chunks are persisted
+    as this turn's sources, so carried context never accumulates across turns.
+    """
     settings = get_settings()
     history = memory.get_context(db, session.id, settings.memory_window_turns)
 
@@ -108,7 +116,8 @@ def _prepare(
     if page is not None:
         pages.add(page)
 
-    chunks: list[Chunk] = _carried_chunks(db, history)
+    carried = _carried_chunks(db, history)
+    fresh: list[Chunk] = []
     if session.book_id is not None:
         query_vector = EmbeddingClient().embed_one(_retrieval_query(history, user_message))
         semantic = retrieve(
@@ -118,7 +127,8 @@ def _prepare(
             top_k=top_k or settings.retrieval_top_k,
         )
         page_chunks = retrieve_by_pages(db, book_id=session.book_id, pages=sorted(pages))
-        chunks = _dedupe([*chunks, *page_chunks, *semantic])
+        fresh = _dedupe([*page_chunks, *semantic])
+    chunks = _dedupe([*carried, *fresh])
 
     book = db.get(Book, session.book_id) if session.book_id else None
     messages: list[dict[str, str]] = [
@@ -134,7 +144,7 @@ def _prepare(
     ]
     messages += [{"role": message.role, "content": message.content} for message in history]
     messages.append({"role": "user", "content": user_message})
-    return messages, chunks
+    return messages, chunks, fresh
 
 
 def answer(
@@ -145,13 +155,13 @@ def answer(
     top_k: int | None = None,
     page: int | None = None,
 ) -> TutorReply:
-    messages, chunks = _prepare(
+    messages, chunks, fresh = _prepare(
         db, session=session, user_message=user_message, top_k=top_k, page=page
     )
     text = ChatClient().complete(messages)
     memory.append_message(db, session.id, "user", user_message)
     memory.append_message(
-        db, session.id, "assistant", text, [str(chunk.id) for chunk in chunks]
+        db, session.id, "assistant", text, [str(chunk.id) for chunk in fresh]
     )
     return TutorReply(text=text, sources=chunks)
 
@@ -165,7 +175,7 @@ def answer_stream(
     page: int | None = None,
 ) -> Iterator[StreamEvent]:
     """Yield sources once, then text deltas; persist the turn when finished."""
-    messages, chunks = _prepare(
+    messages, chunks, fresh = _prepare(
         db, session=session, user_message=user_message, top_k=top_k, page=page
     )
     yield StreamEvent(sources=chunks)
@@ -178,5 +188,5 @@ def answer_stream(
     text = "".join(parts)
     memory.append_message(db, session.id, "user", user_message)
     memory.append_message(
-        db, session.id, "assistant", text, [str(chunk.id) for chunk in chunks]
+        db, session.id, "assistant", text, [str(chunk.id) for chunk in fresh]
     )
