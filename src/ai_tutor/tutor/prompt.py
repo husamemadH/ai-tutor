@@ -23,7 +23,8 @@ _HISTORY_NOTE = "\n\nهاي محادثة مستمرة، فتذكّر شو الط
 
 
 def _format_chunk(chunk: Chunk) -> str:
-    location = f"صفحة {chunk.page_start}" if chunk.page_start else "بدون رقم صفحة"
+    page = chunk.display_page
+    location = f"صفحة {page}" if page else "بدون رقم صفحة"
     if chunk.section:
         location = f"{location} - {chunk.section}"
     return f"[{location}]\n{chunk.content}"

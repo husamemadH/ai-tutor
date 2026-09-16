@@ -31,15 +31,16 @@ def retrieve_by_pages(
     book_id: uuid.UUID | None,
     pages: list[int],
 ) -> list[Chunk]:
-    """Fetch chunks overlapping any of the given page numbers, in page order."""
+    """Fetch chunks matching given printed page numbers, falling back to physical pages."""
     if book_id is None or not pages:
         return []
-    overlaps = [
-        and_(Chunk.page_start <= page, Chunk.page_end >= page) for page in set(pages)
-    ]
+    matches = []
+    for page in set(pages):
+        matches.append(Chunk.printed_page == page)
+        matches.append(and_(Chunk.page_start <= page, Chunk.page_end >= page))
     stmt = (
         select(Chunk)
-        .where(Chunk.book_id == book_id, or_(*overlaps))
+        .where(Chunk.book_id == book_id, or_(*matches))
         .order_by(Chunk.page_start)
     )
     return list(db.scalars(stmt))

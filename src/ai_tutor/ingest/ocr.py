@@ -1,4 +1,5 @@
 import base64
+import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -9,10 +10,33 @@ from ai_tutor.config import get_settings
 from ai_tutor.ingest.parse import Page
 from ai_tutor.openrouter import build_client
 
-_OCR_INSTRUCTION = (
-    "أنت أداة تفريغ نصوص. فرّغ كل النص العربي والإنجليزي والمعادلات في الصفحة كما يظهر، "
-    "مع الحفاظ على ترتيب الفقرات والأسطر. لا تضف أي شرح أو تعليق، وأخرج النص المفرّغ فقط."
-)
+_OCR_INSTRUCTION = """\
+أنت أداة تفريغ نصوص.
+قواعد الإخراج:
+- السطر الأول لازم يكون رقم الصفحة المطبوع، بهذا الشكل بالضبط: PAGE:<الرقم>
+- رقم الصفحة هو الرقم اللي يظهر منفصلًا عادةً أسفل الصفحة أو بأعلاها، مو رقم سؤال أو مثال أو شكل أو تمرين.
+- إذا ما في رقم صفحة ظاهر، اكتب في السطر الأول: PAGE:none
+- بعد السطر الأول، فرّغ كل النص العربي والإنجليزي والمعادلات كما يظهر، مع الحفاظ على ترتيب الفقرات والأسطر.
+- لا تضف أي شرح أو تعليق، ولا تكرر رقم الصفحة داخل النص."""
+
+_PAGE_RE = re.compile(r"PAGE\s*[:=]\s*([0-9\u0660-\u0669]+|none)", re.IGNORECASE)
+_ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+
+
+def parse_ocr_output(content: str) -> tuple[int | None, str]:
+    """Split the model output into (printed_page, text)."""
+    lines = (content or "").splitlines()
+    printed: int | None = None
+    start = 0
+    for index, line in enumerate(lines[:2]):
+        match = _PAGE_RE.search(line)
+        if match:
+            value = match.group(1)
+            if value.lower() != "none":
+                printed = int(value.translate(_ARABIC_DIGITS))
+            start = index + 1
+            break
+    return printed, "\n".join(lines[start:]).strip()
 
 
 class OcrClient:
@@ -59,9 +83,10 @@ class OcrClient:
                 renders.append((index, base64.b64encode(pix.tobytes("png")).decode()))
 
         with ThreadPoolExecutor(max_workers=self._workers) as pool:
-            results = list(pool.map(lambda item: self._transcribe(item[1]), renders))
+            outputs = list(pool.map(lambda item: self._transcribe(item[1]), renders))
 
-        return [
-            Page(number=number, text=text)
-            for (number, _), text in zip(renders, results, strict=True)
-        ]
+        pages: list[Page] = []
+        for (number, _), output in zip(renders, outputs, strict=True):
+            printed, text = parse_ocr_output(output)
+            pages.append(Page(number=number, text=text, printed_number=printed))
+        return pages

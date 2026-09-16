@@ -43,14 +43,19 @@ def ingest_pages(
     for batch in batched(text_chunks, batch_size):
         vectors = embedder.embed([chunk.content for chunk in batch])
         for chunk, vector in zip(batch, vectors, strict=True):
+            content = chunk.content
+            printed = next(
+                (p.printed_number for p in pages if p.number == chunk.page_start), None
+            )
             db.add(
                 Chunk(
                     book_id=book.id,
                     page_start=chunk.page_start,
                     page_end=chunk.page_end,
+                    printed_page=printed,
                     section=chunk.section,
-                    content=chunk.content,
-                    token_count=_token_count(chunk.content),
+                    content=content,
+                    token_count=_token_count(content),
                     embedding=vector,
                 )
             )

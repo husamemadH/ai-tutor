@@ -35,6 +35,7 @@ class Chunk(Base):
     )
     page_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
     page_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    printed_page: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     section: Mapped[str | None] = mapped_column(Text, nullable=True)
     content: Mapped[str] = mapped_column(Text)
     token_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -42,6 +43,10 @@ class Chunk(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     book: Mapped["Book"] = relationship(back_populates="chunks")
+
+    @property
+    def display_page(self) -> int | None:
+        return self.printed_page if self.printed_page is not None else self.page_start
 
 
 class ChatSession(Base):

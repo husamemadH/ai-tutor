@@ -8,6 +8,7 @@ import pymupdf
 class Page:
     number: int
     text: str
+    printed_number: int | None = None
 
 
 def parse_pdf(path: Path) -> list[Page]:

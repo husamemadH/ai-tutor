@@ -114,7 +114,7 @@ def chat(
             console.print()
             if sources and found:
                 refs = ", ".join(
-                    f"ص{chunk.page_start}" for chunk in found if chunk.page_start
+                    f"ص{chunk.display_page}" for chunk in found if chunk.display_page
                 )
                 if refs:
                     console.print(f"[dim]sources: {refs}[/dim]")

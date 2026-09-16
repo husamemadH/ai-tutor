@@ -115,7 +115,7 @@ def chat(payload: ChatIn) -> StreamingResponse:
                         yield _event(
                             {
                                 "sources": [
-                                    {"page": chunk.page_start, "section": chunk.section}
+                                    {"page": chunk.display_page, "section": chunk.section}
                                     for chunk in event.sources
                                 ]
                             }
