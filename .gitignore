@@ -12,6 +12,7 @@ __pycache__/
 # Data
 data/books/*
 !data/books/.gitkeep
+dist/
 
 # OS
 .DS_Store

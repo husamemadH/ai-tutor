@@ -16,6 +16,21 @@ cp .env.example .env      # add OPENROUTER_API_KEY
 docker compose up -d
 uv sync
 uv run ai-tutor init-db
+
+# optional: restore prebuilt books + chunks, skipping OCR and embedding
+bash scripts/pull_db.sh
+```
+
+`scripts/pull_db.sh` downloads a data-only dump of `books` + `chunks` from the
+`db-data` GitHub release and restores it into the local DB. This avoids re-running
+OCR + embedding after a fresh clone. Note the dump contains the extracted book
+text, so it is distributed as a release asset rather than tracked in git.
+
+To regenerate and publish the dump after (re-)ingesting books:
+
+```bash
+bash scripts/dump_db.sh
+gh release upload db-data dist/ai_tutor_data.sql.gz --clobber
 ```
 
 ## Health
