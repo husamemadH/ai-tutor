@@ -95,7 +95,7 @@ def normalize_math(text: str) -> str:
         return _AR_LETTER_NAMES[match.group(1)]
 
     text = re.sub(
-        rf"(?<![\u0621-\u064a])([أبجدسصعملنقكرفط])[{_DIAC}]*+(?![\u0621-\u064a])",
+        rf"(?<![\u0621-\u064a{_DIAC}])([أبجدسصعملنقكرفط])[{_DIAC}]*+(?![\u0621-\u064a])",
         _letter,
         text,
     )

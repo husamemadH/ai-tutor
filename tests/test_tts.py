@@ -38,6 +38,15 @@ def test_single_letters_named():
     assert "ميم دال" in out and "سين صاد" in out
 
 
+def test_vocalized_words_preserved_for_speech():
+    text = "أَهْلًا بِكَ. نَعَمْ، أَنَا مُعَلِّمُكَ."
+    assert sanitize(text) == text
+
+
+def test_vocalized_standalone_variables_still_named():
+    assert normalize_math("سَ + صَ = ٥") == "سين زائد صاد يساوي ٥"
+
+
 def test_western_digits_converted():
     assert "٤" in normalize_math("4 π")
 
