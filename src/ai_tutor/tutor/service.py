@@ -11,7 +11,7 @@ from ai_tutor.embeddings import EmbeddingClient
 from ai_tutor.llm import ChatClient
 from ai_tutor.memory import session as memory
 from ai_tutor.models import Book, ChatSession, Chunk, Message
-from ai_tutor.rag.retrieve import retrieve, retrieve_by_pages
+from ai_tutor.rag.retrieve import retrieve, retrieve_by_pages, retrieve_multi
 from ai_tutor.tutor.prompt import build_system_prompt
 
 
@@ -79,6 +79,27 @@ def _dedupe(chunks: list[Chunk]) -> list[Chunk]:
 _CARRIED_LIMIT = 12
 _PINNED_LIMIT = 8
 _CONTEXT_LIMIT = 15
+_MAX_SUBQUERIES = 12
+
+
+def _page_queries(base: str, page_chunks: list[Chunk]) -> list[str]:
+    """Expand the base query with each line/question on the referenced page.
+
+    A whole review page embeds diffusely (many topics), so per-line queries are
+    what actually surface the lesson page that answers each item.
+    """
+    queries = [base]
+    seen = {base}
+    for chunk in page_chunks:
+        for line in chunk.content.splitlines():
+            line = line.strip()
+            if len(line) < 12 or line in seen:
+                continue
+            seen.add(line)
+            queries.append(line)
+            if len(queries) > _MAX_SUBQUERIES:
+                return queries
+    return queries
 
 
 def _chunks_by_ids(db: Session, ids: list[str], limit: int) -> list[Chunk]:
@@ -126,14 +147,23 @@ def _prepare(
     carried = _carried_chunks(db, history)
     fresh: list[Chunk] = []
     if session.book_id is not None:
-        query_vector = EmbeddingClient().embed_one(_retrieval_query(history, user_message))
-        semantic = retrieve(
-            db,
-            query_embedding=query_vector,
-            book_id=session.book_id,
-            top_k=top_k or settings.retrieval_top_k,
-        )
         page_chunks = retrieve_by_pages(db, book_id=session.book_id, pages=sorted(pages))
+        base_query = _retrieval_query(history, user_message)
+        if page_chunks:
+            vectors = EmbeddingClient().embed(_page_queries(base_query, page_chunks))
+            semantic = retrieve_multi(
+                db,
+                query_embeddings=vectors,
+                book_id=session.book_id,
+                top_k=_CONTEXT_LIMIT,
+            )
+        else:
+            semantic = retrieve(
+                db,
+                query_embedding=EmbeddingClient().embed_one(base_query),
+                book_id=session.book_id,
+                top_k=top_k or settings.retrieval_top_k,
+            )
         fresh = _dedupe([*page_chunks, *semantic])
         if page_chunks:
             owned = list(session.pinned_chunk_ids or [])

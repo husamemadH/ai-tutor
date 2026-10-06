@@ -17,6 +17,8 @@
   button { cursor:pointer; }
   button:hover { background:#1f2937; }
   button:disabled { opacity:.5; cursor:default; }
+  button.rec { background:#7f1d1d; border-color:#ef4444; }
+  button.on { background:#14532d; border-color:#22c55e; }
   #log { flex:1; overflow-y:auto; padding:1.2rem; display:flex; flex-direction:column; gap:.9rem; }
   .row { display:flex; }
   .row.user { justify-content:flex-start; }
@@ -39,6 +41,8 @@
   <h1>المدرّس الذكي</h1>
   <select id="book"></select>
   <button id="new">محادثة جديدة</button>
+  <button id="tts" type="button"></button>
+  <select id="rate" title="سرعة قراءة الصوت"></select>
   <span id="status" style="color:var(--muted);font-size:.85rem;margin-inline-start:auto"></span>
 </header>
 
@@ -46,6 +50,7 @@
 
 <footer>
   <textarea id="input" rows="1" placeholder="اكتب سؤالك… (Enter للإرسال)"></textarea>
+  <button id="mic" type="button">تحدث</button>
   <button id="send">إرسال</button>
 </footer>
 
@@ -54,9 +59,37 @@ const log = document.getElementById("log");
 const bookSel = document.getElementById("book");
 const input = document.getElementById("input");
 const sendBtn = document.getElementById("send");
+const micBtn = document.getElementById("mic");
 const newBtn = document.getElementById("new");
+const ttsBtn = document.getElementById("tts");
+const rateSel = document.getElementById("rate");
 const statusEl = document.getElementById("status");
+const MAX_MS = 30000;
+const MIN_MS = 400;
+const RATE_OPTIONS = [
+  { value: "-50%", label: "بطيء جدًا (-50%)" },
+  { value: "-25%", label: "بطيء (-25%)" },
+  { value: "-15%", label: "أبطأ قليلاً (-15%)" },
+  { value: "-10%", label: "أبطأ قليلاً (-10%)" },
+  { value: "-5%", label: "أبطأ قليلاً (-5%)" },
+  { value: "0%", label: "عادي (0%)" },
+  { value: "+5%", label: "أسرع قليلاً (+5%)" },
+  { value: "+10%", label: "أسرع قليلاً (+10%)" },
+  { value: "+15%", label: "أسرع قليلاً (+15%)" },
+  { value: "+25%", label: "سريع (+25%)" },
+  { value: "+50%", label: "سريع جدًا (+50%)" },
+];
 let sessionId = null;
+let recorder = null;
+let recStream = null;
+let recChunks = [];
+let recTimer = null;
+let recStarted = 0;
+let recording = false;
+let ttsOn = localStorage.getItem("tts") === "on";
+let ttsRate = RATE_OPTIONS.some((o) => o.value === localStorage.getItem("ttsRate"))
+  ? localStorage.getItem("ttsRate") : "0%";
+let audioEl = null;
 
 async function loadBooks() {
   const books = await (await fetch("/api/books")).json();
@@ -91,6 +124,48 @@ function bubble(role, text) {
   return b;
 }
 
+function updateTtsBtn() {
+  ttsBtn.textContent = ttsOn ? "🔊" : "🔇";
+  ttsBtn.title = ttsOn ? "إيقاف التشغيل التلقائي" : "تشغيل الردود تلقائيًا";
+  ttsBtn.classList.toggle("on", ttsOn);
+}
+
+function stopAudio() {
+  if (audioEl) { audioEl.pause(); audioEl = null; }
+}
+
+const AR_DIACRITICS = /[\u064B-\u0652\u0670]/g;
+
+function stripTashkeel(text) {
+  return text.replace(AR_DIACRITICS, "");
+}
+
+async function playTts(text) {
+  if (!ttsOn || !text.trim()) return;
+  stopAudio();
+  statusEl.textContent = "جاري تجهيز الصوت…";
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, rate: ttsRate }),
+    });
+    if (!res.ok) {
+      let detail = "تعذّر تجهيز الصوت";
+      try { detail = (await res.json()).detail || detail; } catch (_) {}
+      statusEl.textContent = detail;
+      return;
+    }
+    const url = URL.createObjectURL(await res.blob());
+    audioEl = new Audio(url);
+    audioEl.onended = () => { URL.revokeObjectURL(url); audioEl = null; };
+    await audioEl.play();
+    statusEl.textContent = "جاهز";
+  } catch (e) {
+    statusEl.textContent = "تعذّر تجهيز الصوت";
+  }
+}
+
 async function newSession() {
   const bookId = bookSel.value || null;
   const res = await fetch("/api/sessions", {
@@ -104,15 +179,105 @@ async function newSession() {
   statusEl.textContent = "جاهز";
 }
 
-async function send() {
-  const message = input.value.trim();
-  if (!message || !sessionId) return;
-  input.value = "";
+function pickMime() {
+  const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  return types.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+}
+
+function stopRec() {
+  if (!recording) return;
+  recording = false;
+  clearInterval(recTimer);
+  recTimer = null;
+  if (recorder && recorder.state !== "inactive") recorder.stop();
+  (recStream ? recStream.getTracks() : []).forEach((t) => t.stop());
+  recStream = null;
+  micBtn.classList.remove("rec");
+}
+
+async function onRecStop() {
+  const elapsed = Date.now() - recStarted;
+  const mime = (recorder && recorder.mimeType) || "audio/webm";
+  const chunks = recChunks;
+  recorder = null;
+  recChunks = [];
+  if (elapsed < MIN_MS || !chunks.length) {
+    statusEl.textContent = "جاهز";
+    sendBtn.disabled = false;
+    micBtn.disabled = false;
+    return;
+  }
+  statusEl.textContent = "جاري التحويل…";
+  micBtn.disabled = true;
+  const blob = new Blob(chunks, { type: mime });
+  const ext = mime.includes("mp4") ? "mp4" : "webm";
+  const form = new FormData();
+  form.append("file", blob, "clip." + ext);
+  try {
+    const res = await fetch("/api/stt", { method: "POST", body: form });
+    if (!res.ok) {
+      let detail = "تعذّر التحويل";
+      try { detail = (await res.json()).detail || detail; } catch (_) {}
+      statusEl.textContent = detail;
+      return;
+    }
+    const data = await res.json();
+    const text = (data.text || "").trim();
+    if (!text) {
+      statusEl.textContent = "ما سمعت إشي";
+      return;
+    }
+    statusEl.textContent = "جاهز";
+    await send(text);
+  } catch (e) {
+    statusEl.textContent = "تعذّر التحويل";
+  } finally {
+    sendBtn.disabled = false;
+    micBtn.disabled = false;
+  }
+}
+
+async function toggleMic() {
+  if (recording) { stopRec(); return; }
+  if (!sessionId || sendBtn.disabled) return;
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (_) {
+    statusEl.textContent = "الميكروفون غير مسموح";
+    return;
+  }
+  recStream = stream;
+  recChunks = [];
+  const mime = pickMime();
+  recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+  recorder.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
+  recorder.onstop = onRecStop;
+  recorder.start();
+  recording = true;
+  recStarted = Date.now();
+  micBtn.classList.add("rec");
   sendBtn.disabled = true;
+  statusEl.textContent = "تسجيل… 30";
+  recTimer = setInterval(() => {
+    const left = Math.max(0, Math.ceil((MAX_MS - (Date.now() - recStarted)) / 1000));
+    statusEl.textContent = "تسجيل… " + left;
+  }, 200);
+  setTimeout(() => { if (recording) stopRec(); }, MAX_MS);
+}
+
+async function send(preset) {
+  const message = (typeof preset === "string" ? preset : input.value).trim();
+  if (!message || !sessionId || recording) return;
+  if (typeof preset !== "string") input.value = "";
+  sendBtn.disabled = true;
+  micBtn.disabled = true;
+  stopAudio();
   bubble("user", message);
   const out = bubble("tutor", "");
   out.classList.add("cursor");
   let sourceRefs = "";
+  let answer = "";
 
   try {
     const res = await fetch("/api/chat", {
@@ -134,7 +299,8 @@ async function send() {
         if (!part.startsWith("data:")) continue;
         const ev = JSON.parse(part.slice(5).trim());
         if (ev.delta) {
-          out.textContent += ev.delta;
+          answer += ev.delta;
+          out.textContent += stripTashkeel(ev.delta);
           log.scrollTop = log.scrollHeight;
         } else if (ev.sources) {
           const pages = [...new Set(ev.sources.map(s => s.page).filter(Boolean))].sort((a, b) => a - b);
@@ -155,17 +321,38 @@ async function send() {
       out.appendChild(s);
     }
     sendBtn.disabled = false;
+    micBtn.disabled = false;
     input.focus();
+    playTts(answer);
   }
 }
 
-sendBtn.onclick = send;
+sendBtn.onclick = () => send();
+micBtn.onclick = toggleMic;
 newBtn.onclick = newSession;
+ttsBtn.onclick = () => {
+  ttsOn = !ttsOn;
+  localStorage.setItem("tts", ttsOn ? "on" : "off");
+  if (!ttsOn) stopAudio();
+  updateTtsBtn();
+};
 bookSel.addEventListener("change", newSession);
+rateSel.onchange = () => {
+  ttsRate = rateSel.value;
+  localStorage.setItem("ttsRate", ttsRate);
+};
 input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
 });
 
+for (const o of RATE_OPTIONS) {
+  const opt = document.createElement("option");
+  opt.value = o.value;
+  opt.textContent = o.label;
+  rateSel.appendChild(opt);
+}
+rateSel.value = ttsRate;
+updateTtsBtn();
 loadBooks().then(newSession);
 </script>
 </body>

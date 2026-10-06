@@ -76,6 +76,8 @@ src/ai_tutor/
   openrouter.py    shared HTTP client
   embeddings.py    batched embeddings
   llm.py           chat completions
+  stt.py           Groq Whisper transcription (push-to-talk)
+  tts.py           Azure Speech synthesis (auto-play toggle)
   api/main.py      FastAPI app
   cli.py           CLI entry point
   ingest/          parse -> chunk -> embed -> store   (M1)
@@ -91,4 +93,4 @@ src/ai_tutor/
 - **M2** retrieval + tutor answer (done)
 - **M3** sessions + last-N memory + metadata scoping (done)
 - **M4** *(optional)* teaching-card generation at ingest
-- **M5** *(later)* STT/TTS voice loop
+- **M5** STT/TTS voice loop (done; MSA output via `TUTOR_DIALECT=msa`)

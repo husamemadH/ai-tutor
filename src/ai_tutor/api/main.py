@@ -1,10 +1,11 @@
 import json
 import uuid
 from pathlib import Path
+from typing import Annotated
 
 import httpx
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -13,6 +14,8 @@ from ai_tutor.books import list_books
 from ai_tutor.db import engine, session_scope
 from ai_tutor.memory import session as memory
 from ai_tutor.models import Book
+from ai_tutor.stt import SttError, transcribe
+from ai_tutor.tts import TtsError, synthesize
 from ai_tutor.tutor.service import answer_stream
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -83,6 +86,38 @@ def create_session(payload: SessionIn) -> SessionOut:
             title=book.title if book else None,
         )
         return SessionOut(session_id=str(session.id), title=session.title)
+
+
+class SttOut(BaseModel):
+    text: str
+
+
+@app.post("/api/stt")
+def speech_to_text(file: Annotated[UploadFile, File()]) -> SttOut:
+    audio = file.file.read()
+    try:
+        text = transcribe(audio, file.filename or "clip.webm", file.content_type)
+    except SttError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Speech service failed") from exc
+    return SttOut(text=text)
+
+
+class TtsIn(BaseModel):
+    text: str
+    rate: str | None = None
+
+
+@app.post("/api/tts")
+def text_to_speech(payload: TtsIn) -> Response:
+    try:
+        audio = synthesize(payload.text, rate=payload.rate)
+    except TtsError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Speech service failed") from exc
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 class ChatIn(BaseModel):

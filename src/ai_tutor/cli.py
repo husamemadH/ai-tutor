@@ -31,7 +31,14 @@ def settings() -> None:
     console.print(f"embedding_model: {s.embedding_model} (dim={s.embedding_dim})")
     console.print(f"database_url:    {s.database_url}")
     key = "[green]set[/green]" if s.openrouter_api_key else "[red]missing[/red]"
+    groq = "[green]set[/green]" if s.groq_api_key else "[red]missing[/red]"
+    azure = "[green]set[/green]" if s.azure_speech_key else "[red]missing[/red]"
     console.print(f"openrouter_key:  {key}")
+    console.print(f"groq_key:        {groq}")
+    console.print(f"stt_model:       {s.stt_model} (max {s.stt_max_seconds}s)")
+    console.print(f"azure_key:       {azure} (region={s.azure_speech_region or 'missing'})")
+    console.print(f"tts_voice:       {s.azure_tts_voice}")
+    console.print(f"tutor_dialect:   {s.tutor_dialect}")
 
 
 @app.command()

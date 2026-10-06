@@ -9,6 +9,20 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
+    groq_api_key: str = ""
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    stt_model: str = "whisper-large-v3-turbo"
+    stt_max_seconds: int = 30
+
+    azure_speech_key: str = ""
+    azure_speech_region: str = ""
+    azure_tts_voice: str = "ar-SA-HamedNeural"
+    azure_tts_rate: str = "0%"
+    azure_tts_format: str = "audio-24khz-48kbitrate-mono-mp3"
+    azure_tts_max_chars: int = 2000
+
+    tutor_dialect: str = "jordanian"
+
     chat_model: str = "deepseek/deepseek-v4.1-flash"
     embedding_model: str = "baai/bge-m3"
     embedding_dim: int = 1024

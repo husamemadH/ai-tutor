@@ -15,16 +15,20 @@ Current status: working POC (text-only) for grade 8 (OCR books) + grade 4 (text-
 - Python 3.12, managed with **uv**
 - FastAPI + Uvicorn
 - SQLAlchemy 2.0 + Postgres 17 + **pgvector** (Docker, container `ai-tutor-db`, host port **5434**)
-- OpenRouter for both chat and embeddings (single `OPENROUTER_API_KEY`)
+- OpenRouter for chat and embeddings (`OPENROUTER_API_KEY`)
   - chat: `deepseek/deepseek-v4.1-flash` (vision-capable, used for OCR too)
   - embeddings: `baai/bge-m3`, **1024-dim**
+- Groq for speech-to-text (`GROQ_API_KEY`, optional — typing still works without it)
+  - STT: `whisper-large-v3-turbo`, `language=ar`, 30s max clip
+- Azure Speech for text-to-speech (`AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION`, optional)
+  - TTS: neural voice `ar-SA-HamedNeural`, REST API via httpx (no SDK)
 
 ## Get it running on a fresh device
 
 ```bash
 git clone https://github.com/husamemadH/ai-tutor.git
 cd ai-tutor
-cp .env.example .env          # then put a real OPENROUTER_API_KEY in it
+cp .env.example .env          # OPENROUTER_API_KEY required; GROQ_API_KEY for the mic
 docker compose up -d          # starts pgvector on localhost:5434
 uv sync                       # installs deps (dev group included)
 uv run ai-tutor init-db       # creates the vector extension + tables
@@ -128,7 +132,8 @@ src/ai_tutor/
   openrouter.py    shared httpx client
   embeddings.py    batched embeddings
   llm.py           chat completions + streaming
-  api/main.py      FastAPI app + SSE /api/chat; serves static/index.html
+  stt.py           Groq Whisper transcription (push-to-talk)
+  api/main.py      FastAPI app + SSE /api/chat + POST /api/stt; serves static/index.html
   cli.py           `ai-tutor` entrypoint (init-db, settings, books, chat)
   ingest/
     parse.py       PDF text extraction (PyMuPDF)
@@ -149,6 +154,12 @@ src/ai_tutor/
   why OCR is the default.
 - **Grounded, not confined:** the prompt treats the book as primary and cited, but allows
   general knowledge, flagged inline. Don't change this casually.
+- **Page-anchored retrieval:** when a message names a page (`extract_pages`), that page's
+  text is split into per-line sub-queries and unioned via `retrieve_multi` (`rag/retrieve.py`);
+  each chunk is ranked by its best distance across queries (`tutor/service.py:_page_queries`).
+  A whole review page embeds diffusely and misses the lesson page, so per-question queries are
+  what surface the content that answers each item. Short prompts like "حل أسئلة صفحة 154"
+  otherwise embed to generic review sections and the model can't ground its answers.
 - **Sessions are single-book.** Changing the book in the UI rebinds the session; there is
   intentionally no cross-book conversation handling.
 - **Context/carry caps** in `tutor/service.py`: `_CARRIED_LIMIT=12`, `_PINNED_LIMIT=8`,
@@ -158,6 +169,25 @@ src/ai_tutor/
 - **Cost is negligible** (~$0.002/turn); latency tracks output length, not context size.
   No auto-compaction is needed — history + context are already bounded.
 - `إشي` is valid Jordanian and must NOT be flagged. Banned Levantine markers: `هلق`, `هلقيت`.
+- **Tutor dialect is configurable:** `TUTOR_DIALECT=jordanian` (default) or `msa`; `prompt.py`
+  selects the instruction block. MSA mode writes **full tashkeel** (diacritics) so Azure TTS
+  pronounces ambiguous words correctly (e.g. أخبِرني vs أخبرني), and omits inline page citations
+  (the UI shows a sources footer). It invalidates the `dialect` eval metric (it checks Jordanian
+  markers) — run evals in `jordanian` mode.
+- **Voice (STT + TTS):** UI mic is press-to-start / press-to-stop, auto-stop at 30s, then
+  `POST /api/stt` and auto-send the transcript through `/api/chat`. Audio is not stored.
+  TTS is opt-in via the header 🔊 toggle (persisted in `localStorage`): after a reply streams,
+  the UI `POST`s it to `/api/tts` and plays the returned MP3. In MSA mode the reply is vocalized;
+  the UI strips Arabic diacritics for display but sends the **vocalized** text to TTS, so the
+  student sees clean text while pronunciation stays correct. A header speed selector sends a
+  `rate` (SSML `prosody`, e.g. `-25%`/`+25%`, default `AZURE_TTS_RATE=0%`). TTS text is
+  normalized (`tts.py:normalize_math`): math symbols and single-letter variables (س→سين,
+  = → يساوي, - → ناقص/سالب) become spoken Arabic; the displayed text is unaffected. Page
+  citations (parentheses/brackets), emoticons and emoji are stripped before synthesis. The
+  service splits long text at sentence boundaries (`tts.py:split_for_tts`,
+  `AZURE_TTS_MAX_CHARS=2000` per Azure request), concatenates the MP3s, and returns one file —
+  so any client can just POST the whole reply. Needs `GROQ_API_KEY` (STT) and
+  `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION` (TTS).
 
 ## Optimization protocol (agreed)
 

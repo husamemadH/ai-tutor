@@ -44,3 +44,30 @@ def retrieve_by_pages(
         .order_by(Chunk.page_start)
     )
     return list(db.scalars(stmt))
+
+
+def retrieve_multi(
+    db: Session,
+    *,
+    query_embeddings: list[list[float]],
+    book_id: uuid.UUID | None,
+    top_k: int,
+    per_query: int = 6,
+) -> list[Chunk]:
+    """Union several semantic queries, ranking each chunk by its best (min) distance."""
+    if book_id is None or top_k <= 0 or not query_embeddings:
+        return []
+    best: dict[uuid.UUID, tuple[float, Chunk]] = {}
+    for vector in query_embeddings:
+        rows = db.execute(
+            select(Chunk, Chunk.embedding.cosine_distance(vector).label("distance"))
+            .where(Chunk.book_id == book_id)
+            .order_by("distance")
+            .limit(per_query)
+        ).all()
+        for chunk, distance in rows:
+            current = best.get(chunk.id)
+            if current is None or distance < current[0]:
+                best[chunk.id] = (float(distance), chunk)
+    ranked = sorted(best.values(), key=lambda item: item[0])
+    return [chunk for _, chunk in ranked[:top_k]]
