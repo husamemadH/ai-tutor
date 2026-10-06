@@ -3,6 +3,8 @@
 Arabic AI tutor grounded in textbooks, with text chat, Groq speech transcription,
 and Azure speech playback. Output supports MSA with diacritics or Jordanian Arabic.
 
+Deferred features and design notes are saved in [Feature ideas](FEATURE_IDEAS.md).
+
 ## Stack
 
 - Python 3.12 (uv), FastAPI, SQLAlchemy
