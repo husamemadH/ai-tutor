@@ -5,10 +5,10 @@ on a new device. Read this first.
 
 ## What this is
 
-A dialect-aware (Jordanian Arabic) AI tutor. It ingests textbook PDFs, then answers
-student questions grounded in that book via RAG, replying in Jordanian dialect.
+An Arabic AI tutor with configurable MSA or Jordanian output. It ingests textbook PDFs, then answers
+student questions grounded in that book via RAG, replying in the configured Arabic style.
 Target eventually: grades KG–12, integrated into a larger e-learning platform.
-Current status: working POC (text-only) for grade 8 (OCR books) + grade 4 (text-layer books).
+Current status: working POC with STT and TTS for grade 8 (OCR books) + grade 4 (text-layer books).
 
 ## Stack (locked)
 
@@ -16,7 +16,8 @@ Current status: working POC (text-only) for grade 8 (OCR books) + grade 4 (text-
 - FastAPI + Uvicorn
 - SQLAlchemy 2.0 + Postgres 17 + **pgvector** (Docker, container `ai-tutor-db`, host port **5434**)
 - OpenRouter for chat and embeddings (`OPENROUTER_API_KEY`)
-  - chat: `deepseek/deepseek-v4.1-flash` (vision-capable, used for OCR too)
+  - chat: `deepseek/deepseek-v4.1-flash`
+  - OCR: `google/gemini-2.5-flash` (`OCR_MODEL`; chat model is not used for OCR)
   - embeddings: `baai/bge-m3`, **1024-dim**
 - Groq for speech-to-text (`GROQ_API_KEY`, optional — typing still works without it)
   - STT: `whisper-large-v3-turbo`, `language=ar`, 30s max clip
@@ -72,8 +73,8 @@ The PDFs themselves are gitignored (`data/books/*`) and are **not** in the relea
 ## Running
 
 ```bash
-# Web UI (RTL, streaming) — UI is served at "/"
-uv run uvicorn ai_tutor.api.main:app --reload --port 8090
+# Integrated API — Futurix serves the web UI
+uv run uvicorn ai_tutor.api.main:app --reload --port 8092
 
 # CLI chat (interactive; /exit to quit)
 uv run ai-tutor chat --book "العلوم"
@@ -82,6 +83,26 @@ uv run ai-tutor chat --book "العلوم"
 uv run ai-tutor settings      # effective config, secrets masked
 uv run ai-tutor books         # list ingested books
 ```
+
+### Futurix integration
+
+The HTTP API requires `TUTOR_SERVICE_TOKEN`, shared only with the LMS backend,
+and trusted student/school/grade headers. The backend derives these from its
+authenticated LMS records. Books are grade-scoped, and sessions/history/chat
+are scoped by both `student_id` and `tenant_id`. The former standalone HTML UI
+is no longer served; CLI chat is unaffected.
+
+Run `uv run scripts/migrate_lms.py` against existing databases before starting
+the integrated API. It adds nullable ownership fields, an ownership index, and
+persisted citation metadata without claiming legacy sessions. Health returns
+503 for unavailable or unmigrated databases. Use one worker for the pilot's
+process-level generation limit. The backend adapter forwards SSE through
+`/api/tutor`; service and provider credentials never go to the browser.
+
+`tests/test_lms_api.py` requires `TUTOR_TEST_DATABASE_URL` and creates/removes
+isolated PostgreSQL schemas; other tests run offline. Test schemas require the
+vector extension in the database. Do not treat skipped DB tests as integration
+validation.
 
 ## Ingestion
 
@@ -133,7 +154,8 @@ src/ai_tutor/
   embeddings.py    batched embeddings
   llm.py           chat completions + streaming
   stt.py           Groq Whisper transcription (push-to-talk)
-  api/main.py      FastAPI app + SSE /api/chat + POST /api/stt; serves static/index.html
+  tts.py           Azure speech synthesis, math normalization, MP3 chunking
+  api/main.py      authenticated chat/history/settings/STT/TTS API; UI lives in Futurix
   cli.py           `ai-tutor` entrypoint (init-db, settings, books, chat)
   ingest/
     parse.py       PDF text extraction (PyMuPDF)
@@ -170,16 +192,16 @@ src/ai_tutor/
   No auto-compaction is needed — history + context are already bounded.
 - `إشي` is valid Jordanian and must NOT be flagged. Banned Levantine markers: `هلق`, `هلقيت`.
 - **Tutor dialect is configurable:** `TUTOR_DIALECT=jordanian` (default) or `msa`; `prompt.py`
-  selects the instruction block. MSA mode writes **full tashkeel** (diacritics) so Azure TTS
+  selects the instruction block. The Futurix preview and example env use `msa`. MSA mode writes **full tashkeel** (diacritics) so Azure TTS
   pronounces ambiguous words correctly (e.g. أخبِرني vs أخبرني), and omits inline page citations
   (the UI shows a sources footer). It invalidates the `dialect` eval metric (it checks Jordanian
   markers) — run evals in `jordanian` mode.
 - **Voice (STT + TTS):** UI mic is press-to-start / press-to-stop, auto-stop at 30s, then
   `POST /api/stt` and auto-send the transcript through `/api/chat`. Audio is not stored.
-  TTS is opt-in via the header 🔊 toggle (persisted in `localStorage`): after a reply streams,
+  TTS is opt-in via the Futurix reading toggle (persisted in `localStorage`): after a reply streams,
   the UI `POST`s it to `/api/tts` and plays the returned MP3. In MSA mode the reply is vocalized;
   the UI strips Arabic diacritics for display but sends the **vocalized** text to TTS, so the
-  student sees clean text while pronunciation stays correct. A header speed selector sends a
+  student sees clean text while pronunciation stays correct. A reading speed selector sends a
   `rate` (SSML `prosody`, e.g. `-25%`/`+25%`, default `AZURE_TTS_RATE=0%`). TTS text is
   normalized (`tts.py:normalize_math`): math symbols and single-letter variables (س→سين,
   = → يساوي, - → ناقص/سالب) become spoken Arabic; the displayed text is unaffected. Page

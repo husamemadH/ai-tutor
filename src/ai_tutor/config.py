@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     tutor_dialect: str = "jordanian"
 
     chat_model: str = "deepseek/deepseek-v4.1-flash"
+    ocr_model: str = "google/gemini-2.5-flash"
     embedding_model: str = "baai/bge-m3"
     embedding_dim: int = 1024
 
@@ -32,6 +33,9 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 6
     memory_window_turns: int = 8
     request_timeout: float = 120.0
+    tutor_service_token: str = ""
+    tutor_max_concurrent: int = 4
+    tutor_generation_timeout: float = 120.0
 
 
 @lru_cache

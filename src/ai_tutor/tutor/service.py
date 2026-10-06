@@ -149,21 +149,22 @@ def _prepare(
     if session.book_id is not None:
         page_chunks = retrieve_by_pages(db, book_id=session.book_id, pages=sorted(pages))
         base_query = _retrieval_query(history, user_message)
-        if page_chunks:
-            vectors = EmbeddingClient().embed(_page_queries(base_query, page_chunks))
-            semantic = retrieve_multi(
-                db,
-                query_embeddings=vectors,
-                book_id=session.book_id,
-                top_k=_CONTEXT_LIMIT,
-            )
-        else:
-            semantic = retrieve(
-                db,
-                query_embedding=EmbeddingClient().embed_one(base_query),
-                book_id=session.book_id,
-                top_k=top_k or settings.retrieval_top_k,
-            )
+        with EmbeddingClient() as embedder:
+            if page_chunks:
+                vectors = embedder.embed(_page_queries(base_query, page_chunks))
+                semantic = retrieve_multi(
+                    db,
+                    query_embeddings=vectors,
+                    book_id=session.book_id,
+                    top_k=_CONTEXT_LIMIT,
+                )
+            else:
+                semantic = retrieve(
+                    db,
+                    query_embedding=embedder.embed_one(base_query),
+                    book_id=session.book_id,
+                    top_k=top_k or settings.retrieval_top_k,
+                )
         fresh = _dedupe([*page_chunks, *semantic])
         if page_chunks:
             owned = list(session.pinned_chunk_ids or [])
@@ -232,5 +233,10 @@ def answer_stream(
     text = "".join(parts)
     memory.append_message(db, session.id, "user", user_message)
     memory.append_message(
-        db, session.id, "assistant", text, [str(chunk.id) for chunk in fresh]
+        db,
+        session.id,
+        "assistant",
+        text,
+        [str(chunk.id) for chunk in fresh],
+        [{"page": chunk.display_page, "section": chunk.section} for chunk in chunks],
     )

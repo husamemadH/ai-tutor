@@ -1,13 +1,14 @@
 # AI Tutor
 
-Dialect-aware AI tutor grounded in textbooks. Text-only POC: ingest a book, ask
-questions in Jordanian dialect, get answers grounded strictly in the book.
+Arabic AI tutor grounded in textbooks, with text chat, Groq speech transcription,
+and Azure speech playback. Output supports MSA with diacritics or Jordanian Arabic.
 
 ## Stack
 
 - Python 3.12 (uv), FastAPI, SQLAlchemy
 - Postgres + pgvector (Docker)
-- OpenRouter for both chat (`deepseek/deepseek-v4.1-flash`) and embeddings (`baai/bge-m3`)
+- OpenRouter for chat (`deepseek/deepseek-v4.1-flash`) and embeddings (`baai/bge-m3`)
+- Groq Whisper STT and Azure Speech TTS (optional credentials)
 
 ## Setup
 
@@ -40,6 +41,55 @@ uv run uvicorn ai_tutor.api.main:app --reload
 curl localhost:8000/health
 ```
 
+## Futurix integration
+
+Futurix now owns the tutor web page. The FastAPI service exposes authenticated
+book, conversation, history, streaming chat, settings, STT, and TTS APIs; the standalone HTML page is
+not served. CLI chat remains available.
+
+Set `TUTOR_SERVICE_TOKEN` in this service and the Futurix backend to the same long
+random credential. Set the backend's `TUTOR_SERVICE_URL` to this API's base URL.
+Remote connections require HTTPS; loopback HTTP is supported for development.
+
+Apply the additive migration before using an existing database:
+
+```bash
+uv run scripts/migrate_lms.py
+uv run uvicorn ai_tutor.api.main:app --host 127.0.0.1 --port 8092
+```
+
+The LMS backend supplies authenticated `X-Tutor-Student`, `X-Tutor-Tenant`, and
+`X-Tutor-Grade` headers with the service credential. Conversations are owned by
+both student and school, and books must match the student's grade. Existing
+ownerless conversations are excluded. The health endpoint returns 503 when the
+required schema is unavailable.
+
+Use one worker for the pilot's process-level limit (`TUTOR_MAX_CONCURRENT=4`).
+`TUTOR_GENERATION_TIMEOUT=120` bounds generation time; provider requests also have
+I/O timeouts. PostgreSQL locks reject simultaneous turns within a conversation.
+Only completed turns are committed; citations are persisted for history reloads.
+
+## Voice and Arabic output
+
+The Futurix preview and `.env.example` use `TUTOR_DIALECT=msa`. The Python fallback
+remains `jordanian` when the setting is omitted. MSA answers retain full diacritics
+in saved history and TTS requests; the frontend removes them only for display.
+The upstream page-based multi-query retrieval and TTS math normalization remain intact.
+
+Set `GROQ_API_KEY` for transcription, and `AZURE_SPEECH_KEY` plus
+`AZURE_SPEECH_REGION` for playback. The default voice is `ar-SA-HamedNeural`.
+The authenticated `/api/settings` endpoint reports feature availability without
+exposing credentials. Typing works when speech credentials are absent.
+
+Futurix provides microphone start/stop (30 seconds maximum), optional automatic
+reading, per-answer playback, and reading speed controls. It sends recorded audio
+to the authenticated backend as audio bytes; the backend forwards multipart data
+to `/api/stt`. `/api/tts` returns MP3. Audio uploads are capped at 1,500,000 bytes
+and TTS text at 12,000 characters. The backend rate-limits speech requests and
+aborts downstream audio requests when the browser disconnects. Changing the book,
+conversation, or account stops recordings and playback. Microphone use requires
+HTTPS or localhost.
+
 ## Usage
 
 ```bash
@@ -60,6 +110,11 @@ uv run scripts/ingest_sample.py   # clean Arabic sample book
 uv run ai-tutor books
 uv run ai-tutor chat
 ```
+
+The PostgreSQL integration tests run when `TUTOR_TEST_DATABASE_URL` is set. They
+create and remove isolated schemas and mock provider responses; they do not
+modify the main book catalog or call paid models. The test database must already
+have the vector extension. Without that variable, database tests are skipped.
 
 Note: `scripts/make_sample_book.py` generates a PDF, but Arabic shaped-text
 extraction from it is garbled (presentation forms, no ToUnicode map). Real books

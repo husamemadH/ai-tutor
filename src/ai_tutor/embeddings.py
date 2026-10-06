@@ -1,4 +1,7 @@
-from tenacity import retry, stop_after_attempt, wait_exponential
+from typing import Self
+
+import httpx
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ai_tutor.config import get_settings
 from ai_tutor.openrouter import build_client
@@ -11,7 +14,12 @@ class EmbeddingClient:
         self._settings = get_settings()
         self._client = build_client()
 
-    @retry(stop=stop_after_attempt(4), wait=wait_exponential(min=1, max=20), reraise=True)
+    @retry(
+        retry=retry_if_exception_type(httpx.HTTPError),
+        stop=stop_after_attempt(4),
+        wait=wait_exponential(min=1, max=20),
+        reraise=True,
+    )
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
@@ -29,3 +37,9 @@ class EmbeddingClient:
 
     def embed_one(self, text: str) -> list[float]:
         return self.embed([text])[0]
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self._client.close()

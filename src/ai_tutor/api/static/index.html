@@ -14,6 +14,8 @@
   header h1 { font-size:1.05rem; margin:0; font-weight:600; }
   select, button, input, textarea { font:inherit; color:inherit; }
   select, button { background:#111827; border:1px solid var(--line); border-radius:.5rem; padding:.45rem .7rem; }
+  #book { min-width:16rem; }
+  optgroup { font-weight:600; color:var(--muted); }
   button { cursor:pointer; }
   button:hover { background:#1f2937; }
   button:disabled { opacity:.5; cursor:default; }
@@ -91,6 +93,39 @@ let ttsRate = RATE_OPTIONS.some((o) => o.value === localStorage.getItem("ttsRate
   ? localStorage.getItem("ttsRate") : "0%";
 let audioEl = null;
 
+const GRADE_NAME = {
+  "1": "الأول", "2": "الثاني", "3": "الثالث", "4": "الرابع",
+  "5": "الخامس", "6": "السادس", "7": "السابع", "8": "الثامن",
+  "9": "التاسع", "10": "العاشر", "11": "الحادي عشر", "12": "الثاني عشر",
+};
+const SUBJECT_NAME = {
+  arabic: "اللغة العربية", العربية: "اللغة العربية",
+  math: "الرياضيات", الرياضيات: "الرياضيات",
+  science: "العلوم", العلوم: "العلوم",
+  geo: "الجغرافيا", physics: "الفيزياء", chemistry: "الكيمياء",
+  lifescience: "علوم الحياة",
+};
+const SUBJECT_RANK = ["arabic", "العربية", "math", "الرياضيات", "science", "العلوم", "physics", "chemistry", "lifescience", "geo"];
+
+function semesterOf(title) {
+  const m = title.match(/^[a-z]+(\d+)$/i);
+  if (m) {
+    const d = m[1].slice(-1);
+    if (d === "1") return "الفصل الأول";
+    if (d === "2") return "الفصل الثاني";
+  }
+  if (title.includes("الفصل الأول")) return "الفصل الأول";
+  if (title.includes("الفصل الثاني")) return "الفصل الثاني";
+  return "";
+}
+
+function bookLabel(b) {
+  const sem = semesterOf(b.title);
+  const sub = SUBJECT_NAME[b.subject];
+  if (sub && sem) return `${sub} — ${sem}`;
+  return b.title;
+}
+
 async function loadBooks() {
   const books = await (await fetch("/api/books")).json();
   bookSel.innerHTML = "";
@@ -98,11 +133,30 @@ async function loadBooks() {
     bookSel.innerHTML = "<option value=''>لا توجد كتب</option>";
     return;
   }
+  const groups = new Map();
   for (const b of books) {
-    const o = document.createElement("option");
-    o.value = b.id;
-    o.textContent = `${b.title} (صف ${b.grade})`;
-    bookSel.appendChild(o);
+    const g = b.grade || "؟";
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(b);
+  }
+  const grades = [...groups.keys()].sort((a, b) => (parseInt(a, 10) || 99) - (parseInt(b, 10) || 99));
+  for (const g of grades) {
+    const og = document.createElement("optgroup");
+    og.label = GRADE_NAME[g] ? `الصف ${GRADE_NAME[g]}` : `الصف ${g}`;
+    const items = groups.get(g).sort((a, b) => {
+      const ra = SUBJECT_RANK.indexOf(a.subject);
+      const rb = SUBJECT_RANK.indexOf(b.subject);
+      const d = (ra < 0 ? 99 : ra) - (rb < 0 ? 99 : rb);
+      if (d) return d;
+      return bookLabel(a).localeCompare(bookLabel(b), "ar");
+    });
+    for (const b of items) {
+      const o = document.createElement("option");
+      o.value = b.id;
+      o.textContent = bookLabel(b);
+      og.appendChild(o);
+    }
+    bookSel.appendChild(og);
   }
 }
 

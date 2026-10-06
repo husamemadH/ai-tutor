@@ -87,7 +87,16 @@ def chunk_pages(
         if buf and current_page is not None and page.number != current_page:
             flush(overlap=False)
         current_page = page.number
-        for paragraph in (p.strip() for p in text.split("\n\n")):
+        paragraphs: list[str] = []
+        for raw in text.split("\n\n"):
+            stripped = raw.strip()
+            if len(stripped) > max_chars:
+                paragraphs.extend(
+                    stripped[i : i + max_chars] for i in range(0, len(stripped), max_chars)
+                )
+            elif stripped:
+                paragraphs.append(stripped)
+        for paragraph in paragraphs:
             if not paragraph:
                 continue
             if _looks_like_heading(paragraph):

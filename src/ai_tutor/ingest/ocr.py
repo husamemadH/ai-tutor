@@ -50,7 +50,7 @@ class OcrClient:
 
     def __init__(self, model: str | None = None, workers: int = 6) -> None:
         self._settings = get_settings()
-        self._model = model or self._settings.chat_model
+        self._model = model or self._settings.ocr_model
         self._workers = workers
         self._client = build_client()
 
@@ -73,6 +73,7 @@ class OcrClient:
                     },
                 ],
                 "temperature": 0,
+                "max_tokens": 4096,
                 "provider": {"sort": "latency", "allow_fallbacks": True},
             },
         )

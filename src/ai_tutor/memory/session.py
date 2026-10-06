@@ -41,12 +41,14 @@ def append_message(
     role: str,
     content: str,
     source_chunk_ids: list[str] | None = None,
+    source_metadata: list[dict] | None = None,
 ) -> Message:
     message = Message(
         session_id=session_id,
         role=role,
         content=content,
         source_chunk_ids=source_chunk_ids,
+        source_metadata=source_metadata,
     )
     db.add(message)
     db.flush()
