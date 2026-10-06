@@ -17,7 +17,7 @@ from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
 from ai_tutor.api.auth import Identity, normalize_grade, require_identity
-from ai_tutor.books import list_books
+from ai_tutor.books import display_book_title, list_books
 from ai_tutor.config import get_settings
 from ai_tutor.db import SessionLocal, engine, session_scope
 from ai_tutor.models import Book, ChatSession, Message
@@ -88,11 +88,11 @@ def owned_session(db, session_id: uuid.UUID, identity: Identity) -> ChatSession:
     return session
 
 
-def session_out(session: ChatSession) -> dict:
+def session_out(session: ChatSession, book: Book | None = None) -> dict:
     return {
         "session_id": str(session.id),
         "book_id": str(session.book_id),
-        "title": session.title,
+        "title": display_book_title(book) if book else session.title,
         "created_at": session.created_at.isoformat(),
     }
 
@@ -101,7 +101,12 @@ def session_out(session: ChatSession) -> dict:
 def get_books(identity: Annotated[Identity, Depends(require_identity)]) -> list[BookOut]:
     with session_scope() as db:
         return [
-            BookOut(id=str(book.id), title=book.title, grade=book.grade, subject=book.subject)
+            BookOut(
+                id=str(book.id),
+                title=display_book_title(book),
+                grade=book.grade,
+                subject=book.subject,
+            )
             for book in list_books(db)
             if normalize_grade(book.grade) == identity.grade
         ]
@@ -125,7 +130,7 @@ def create_session(
         )
         db.add(session)
         db.flush()
-        return session_out(session)
+        return session_out(session, book)
 
 
 @app.get("/api/sessions")
@@ -142,7 +147,7 @@ def get_sessions(identity: Annotated[Identity, Depends(require_identity)]) -> li
             .limit(100)
         )
         return [
-            session_out(s) for s, book in sessions if normalize_grade(book.grade) == identity.grade
+            session_out(s, book) for s, book in sessions if normalize_grade(book.grade) == identity.grade
         ]
 
 
@@ -161,7 +166,7 @@ def get_messages(
         has_more = len(messages) > 100
         messages = list(reversed(messages[:100]))
         return {
-            "session": session_out(session),
+            "session": session_out(session, db.get(Book, session.book_id)),
             "messages": [
                 {
                     "id": str(m.id),
