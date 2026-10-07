@@ -1,4 +1,6 @@
-from ai_tutor.tts import normalize_math, sanitize, split_for_tts
+import pytest
+
+from ai_tutor.tts import TtsError, normalize_math, sanitize, split_for_tts
 
 
 def test_subtraction_between_operands():
@@ -78,3 +80,47 @@ def test_emoticons_and_emoji_stripped():
 def test_page_citation_stripped_for_speech():
     assert "154" not in sanitize("الجواب كذا (صفحة 154)")
     assert "154" not in sanitize("الجواب كذا [صفحة 154]")
+
+
+def test_markdown_bullets_and_bold_are_not_math_operators():
+    assert sanitize("## المعاملات\n- **الأول**\n- الثاني\n---") == "المعاملات\nالأول\nالثاني"
+
+
+def test_coefficients_keep_negative_sign_without_speaking_bullet():
+    assert sanitize("- $a = 2$\n- $c = -8$") == ("إيه يساوي ٢\nسي يساوي سالب ٨")
+
+
+def test_quadratic_formula_spoken_with_fraction_and_root():
+    assert sanitize(r"$$x = \frac{-b \pm \sqrt{\Delta}}{2a}$$") == (
+        "إكس يساوي الكسر سالب بي زائد أو ناقص الجذر التربيعي لـ دلتا نهاية الجذر "
+        "على ٢ في إيه نهاية الكسر"
+    )
+
+
+def test_equation_keeps_powers_multiplication_and_subtraction():
+    assert sanitize(r"$2x^2 + x - 8 = 0$") == ("٢ في إكس تربيع زائد إكس ناقص ٨ يساوي ٠")
+    assert "٤ في إيه في سي" in sanitize(r"$b^2 - 4ac$")
+
+
+def test_roots_indices_and_decimal_approximations():
+    assert sanitize(r"$$x_1 = \frac{-1 + 8.06}{4} \approx 1.8$$") == (
+        "إكس رقم ١ يساوي الكسر سالب ١ زائد ٨ فاصلة صفر ستة على ٤ نهاية الكسر "
+        "يساوي تقريبا ١ فاصلة ثمانية"
+    )
+
+
+def test_nested_fraction_scope_and_alternate_delimiters():
+    assert sanitize(r"\[\frac{1}{\frac{2}{3}}\]") == (
+        "الكسر ١ على الكسر ٢ على ٣ نهاية الكسر نهاية الكسر"
+    )
+    assert sanitize(r"\(x^{3}\)") == "إكس تكعيب"
+
+
+def test_arithmetic_multiplication_preserved_without_latex():
+    assert sanitize("2 * 3 = 6") == "٢ في ٣ يساوي ٦"
+    assert sanitize("**الجذران**") == "الجذران"
+
+
+def test_unsupported_latex_does_not_silently_change_equation():
+    with pytest.raises(TtsError, match="Unsupported math notation"):
+        sanitize(r"$\unsupported{x}$")

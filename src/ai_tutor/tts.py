@@ -7,7 +7,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from ai_tutor.config import get_settings
 
 _CITATION = re.compile(r"[\[(][^\])]*صفح[^\])]*[\])]")
-_MARKDOWN = re.compile(r"[*_`#]+")
+_MARKDOWN = re.compile(r"\*\*|__|`+|(?m:^[ \t]*#{1,6}[ \t]+)")
 _EMOTICON = re.compile(r"[:;=]-?[)(DPp/\\|]|<3|\^\^")
 _EMOJI = re.compile(
     "[\U0001f000-\U0001faff\U00002600-\U000027bf\U0001f1e6-\U0001f1ff"
@@ -65,6 +65,139 @@ _ABBREVIATIONS = (
 )
 
 
+def latex_to_speech(text: str) -> str:
+    commands = {
+        "Delta": "دلتا",
+        "delta": "دلتا",
+        "pi": "π",
+        "theta": "ثيتا",
+        "alpha": "ألفا",
+        "beta": "بيتا",
+        "pm": "±",
+        "times": "×",
+        "cdot": "×",
+        "div": "÷",
+        "approx": "≈",
+        "neq": "≠",
+        "le": "≤",
+        "leq": "≤",
+        "ge": "≥",
+        "geq": "≥",
+        "infty": "ما لا نهاية",
+        "sin": "جيب",
+        "cos": "جيب تمام",
+        "tan": "ظل",
+        "log": "لوغاريتم",
+        "ln": "لوغاريتم طبيعي",
+        "sum": "مجموع",
+        "int": "تكامل",
+        "left": "",
+        "right": "",
+        "displaystyle": "",
+        "quad": " ",
+        "qquad": " ",
+    }
+    letters = {
+        "a": "إيه",
+        "b": "بي",
+        "c": "سي",
+        "d": "دي",
+        "e": "إي",
+        "f": "إف",
+        "g": "جي",
+        "h": "إتش",
+        "i": "آي",
+        "j": "جاي",
+        "k": "كي",
+        "l": "إل",
+        "m": "إم",
+        "n": "إن",
+        "o": "أو",
+        "p": "بي",
+        "q": "كيو",
+        "r": "آر",
+        "s": "إس",
+        "t": "تي",
+        "u": "يو",
+        "v": "في",
+        "w": "دبليو",
+        "x": "إكس",
+        "y": "واي",
+        "z": "زد",
+    }
+    text = re.sub(r"(^|[={\[(+])\s*-\s*", r"\1 سالب ", text).replace("-", " ناقص ")
+    position = 0
+
+    def argument(depth: int) -> str:
+        nonlocal position
+        while position < len(text) and text[position].isspace():
+            position += 1
+        if position >= len(text):
+            return ""
+        if text[position] == "{":
+            position += 1
+            return read("}", depth + 1)
+        return atom(depth + 1)
+
+    def atom(depth: int) -> str:
+        nonlocal position
+        char = text[position]
+        position += 1
+        if char == "\\":
+            match = re.match(r"[a-zA-Z]+", text[position:])
+            if not match:
+                if position < len(text):
+                    position += 1
+                return " "
+            command = match.group()
+            position += len(command)
+            if command in {"frac", "dfrac", "tfrac"}:
+                numerator = argument(depth)
+                denominator = argument(depth)
+                return f" الكسر {numerator} على {denominator} نهاية الكسر "
+            if command == "sqrt":
+                while position < len(text) and text[position].isspace():
+                    position += 1
+                index = ""
+                if position < len(text) and text[position] == "[":
+                    position += 1
+                    index = read("]", depth + 1)
+                value = argument(depth)
+                root = f"الجذر من الدرجة {index}" if index else "الجذر التربيعي"
+                return f" {root} لـ {value} نهاية الجذر "
+            if command in {"text", "mathrm", "operatorname", "mathbf", "mathit"}:
+                return argument(depth)
+            if command not in commands:
+                raise TtsError("Unsupported math notation for speech", 422)
+            return f" {commands[command]} "
+        if char == "{":
+            return read("}", depth + 1)
+        if char in "^_":
+            value = argument(depth).strip()
+            if char == "_":
+                return f" رقم {value} "
+            return f" { {'2': 'تربيع', '3': 'تكعيب'}.get(value, f'أس {value}') } "
+        if char.isascii() and char.isalpha():
+            previous = text[position - 2] if position > 1 else ""
+            product = "في " if previous and previous.isascii() and previous.isalnum() else ""
+            return f" {product}{letters.get(char.lower(), char)} "
+        return char
+
+    def read(end: str = "", depth: int = 0) -> str:
+        nonlocal position
+        if depth > 40:
+            raise TtsError("Math expression is too deeply nested", 400)
+        parts = []
+        while position < len(text):
+            if end and text[position] == end:
+                position += 1
+                break
+            parts.append(atom(depth))
+        return "".join(parts)
+
+    return read()
+
+
 def normalize_math(text: str) -> str:
     """Turn math symbols and single-letter variables into spoken Arabic for TTS."""
     text = text.replace("\u2212", "-").replace("–", "-").replace("—", "-")
@@ -76,7 +209,18 @@ def normalize_math(text: str) -> str:
         return f"{match.group(1)} {word}"
 
     text = re.sub(r"(سم|نق|س|ص|ع|م|أ|ب|ج|د)([23])", _exponent, text)
-    text = re.sub(r"(\d)[,٫](\d)", r"\1 فاصلة \2", text)
+    decimal_digits = dict(
+        zip(
+            "0123456789",
+            ["صفر", "واحد", "اثنان", "ثلاثة", "أربعة", "خمسة", "ستة", "سبعة", "ثمانية", "تسعة"],
+        )
+    )
+
+    def _decimal(match: re.Match) -> str:
+        fraction = " ".join(decimal_digits[str(int(digit))] for digit in match.group(2))
+        return f"{match.group(1)} فاصلة {fraction}"
+
+    text = re.sub(r"(\d+)[,.٫](\d+)", _decimal, text)
     text = re.sub(
         r"([\u0621-\u064a0-9\u0660-\u0669)\]])\s*-\s*(?=[0-9\u0660-\u0669(])",
         r"\1 ناقص ",
@@ -99,13 +243,21 @@ def normalize_math(text: str) -> str:
         _letter,
         text,
     )
-    return _SPACES.sub(" ", text).strip()
+    return re.sub(r"(?m)^[ \t]+|[ \t]+$", "", _SPACES.sub(" ", text)).strip()
 
 
 def sanitize(text: str) -> str:
     """Strip citations, markdown, emoticons/emoji, then expand math into spoken Arabic."""
     text = _CITATION.sub("", text or "")
+    text = re.sub(r"(?m)^[ \t]*(?:[-*_][ \t]*){3,}$", "", text)
+    text = re.sub(r"(?m)^[ \t]*[-*+][ \t]+(?=\S)", "", text)
+    text = re.sub(
+        r"\$\$([\s\S]*?)\$\$|\$([^$\n]+)\$|\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)",
+        lambda match: latex_to_speech(next(group for group in match.groups() if group is not None)),
+        text,
+    )
     text = _MARKDOWN.sub("", text)
+    text = re.sub(r"(?<!\w)\*([^*\n]+)\*(?!\w)", r"\1", text)
     text = _EMOTICON.sub(" ", text)
     text = _EMOJI.sub(" ", text)
     text = _SPACES.sub(" ", text)
@@ -153,9 +305,7 @@ def split_for_tts(text: str, max_chars: int) -> list[str]:
                 if word:
                     chunks.append(word)
                     word = ""
-                chunks.extend(
-                    token[i : i + max_chars] for i in range(0, len(token), max_chars)
-                )
+                chunks.extend(token[i : i + max_chars] for i in range(0, len(token), max_chars))
                 continue
             if word and len(word) + len(token) + 1 > max_chars:
                 chunks.append(word)
@@ -169,10 +319,7 @@ def split_for_tts(text: str, max_chars: int) -> list[str]:
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10), reraise=True)
 def _synth_chunk(clean: str, voice: str, speed: str) -> bytes:
     settings = get_settings()
-    url = (
-        f"https://{settings.azure_speech_region}.tts.speech.microsoft.com"
-        "/cognitiveservices/v1"
-    )
+    url = f"https://{settings.azure_speech_region}.tts.speech.microsoft.com/cognitiveservices/v1"
     response = httpx.post(
         url,
         headers={

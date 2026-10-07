@@ -78,6 +78,13 @@ remains `jordanian` when the setting is omitted. MSA answers retain full diacrit
 in saved history and TTS requests; the frontend removes them only for display.
 The upstream page-based multi-query retrieval and TTS math normalization remain intact.
 
+Speech conversion skips Markdown headings, emphasis, list bullets, and separators.
+Common LaTeX algebra inside `$...$`, `$$...$$`, `\(...\)`, and `\[...\]` is spoken
+as Arabic fractions, roots, powers, indices, and operators. Decimal fractional
+digits are read individually to preserve leading zeros. Fraction and root endings
+are announced to make nested expressions unambiguous. Unsupported LaTeX commands
+return a speech error rather than silently dropping part of an equation.
+
 Set `GROQ_API_KEY` for transcription, and `AZURE_SPEECH_KEY` plus
 `AZURE_SPEECH_REGION` for playback. The default voice is `ar-SA-HamedNeural`.
 The authenticated `/api/settings` endpoint reports feature availability without
