@@ -79,6 +79,9 @@ in saved history and TTS requests; the frontend removes them only for display.
 The upstream page-based multi-query retrieval and TTS math normalization remain intact.
 
 Speech conversion skips Markdown headings, emphasis, list bullets, and separators.
+Tutor instructions preserve the textbook's mathematical variables and notation;
+student-provided equations retain the student's symbols throughout the solution
+and follow-up questions.
 Common LaTeX algebra inside `$...$`, `$$...$$`, `\(...\)`, and `\[...\]` is spoken
 as Arabic fractions, roots, powers, indices, and operators. Decimal fractional
 digits are read individually to preserve leading zeros. Fraction and root endings
