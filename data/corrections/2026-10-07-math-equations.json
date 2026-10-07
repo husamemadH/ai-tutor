@@ -1,0 +1,18 @@
+[
+  {
+    "book_title": "math91",
+    "grade": "9",
+    "pdf_page": 116,
+    "old": "0.04x2 + 0.84x = (x)f",
+    "new": "\\(f(x) = -0.04x^2 + 0.84x + 2\\)",
+    "verification": "Original PDF page 116: restore the negative coefficient and constant +2."
+  },
+  {
+    "book_title": "math101",
+    "grade": "10",
+    "pdf_page": 61,
+    "old": "100 = (2 + y)2 + (4 - x)2",
+    "new": "\\((2x - 4)^2 + (2y + 6)^2 = 100\\)",
+    "verification": "Original PDF page 61, exercise 19: restore coefficients 2x, 2y and constant +6."
+  }
+]

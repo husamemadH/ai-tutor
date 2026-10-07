@@ -134,6 +134,27 @@ equivalence or validate every equation. Missing PDFs, scanned pages, complex
 fraction layouts, and equations without a similar stored candidate need separate
 review. No books, chunks, embeddings, or runtime retrieval settings are changed.
 
+For visually confirmed errors, record the exact old and corrected text in a
+correction manifest, then preview and apply it:
+
+```bash
+uv run scripts/correct_verified_equations.py
+uv run scripts/correct_verified_equations.py --apply
+```
+
+The default manifest contains two verified equations from math91 (PDF page 116)
+and math101 (PDF page 61). Use `--manifest /path/to/corrections.json` for another
+reviewed set. Applying saves a private backup under `dist/textbook-corrections`,
+regenerates only the affected embeddings, and updates the chunks in one
+transaction without changing their IDs or page metadata. Unexpected source text
+or concurrent changes stop the operation. Running it again leaves corrected
+chunks unchanged. It does not run OCR or correct unverified audit candidates.
+
+After checking retrieval, publish the corrected book-data release for other
+installations. Check that the exported catalog contains only the intended shared
+books; local demo books should not be added to the release. Existing saved chat
+replies are unchanged, so verify with a new question.
+
 ```bash
 uv run pytest                 # offline unit tests (no API/DB)
 
