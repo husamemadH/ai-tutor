@@ -4,6 +4,7 @@ import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ai_tutor.config import get_settings
+from ai_tutor.observability import observe_provider
 from ai_tutor.openrouter import build_client
 
 
@@ -23,17 +24,22 @@ class EmbeddingClient:
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        response = self._client.post(
-            "/embeddings",
-            json={
-                "model": self._settings.embedding_model,
-                "input": texts,
-                "provider": {"sort": "latency", "allow_fallbacks": True},
-            },
-        )
-        response.raise_for_status()
-        data = response.json()["data"]
-        return [item["embedding"] for item in data]
+        with observe_provider(
+            "openrouter", "embedding", self._settings.embedding_model
+        ) as observed:
+            response = self._client.post(
+                "/embeddings",
+                json={
+                    "model": self._settings.embedding_model,
+                    "input": texts,
+                    "provider": {"sort": "latency", "allow_fallbacks": True},
+                },
+            )
+            observed.status = response.status_code
+            response.raise_for_status()
+            payload = response.json()
+            observed.record_usage(payload.get("usage"))
+            return [item["embedding"] for item in payload["data"]]
 
     def embed_one(self, text: str) -> list[float]:
         return self.embed([text])[0]

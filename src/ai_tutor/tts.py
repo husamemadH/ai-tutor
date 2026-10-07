@@ -5,6 +5,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from ai_tutor.config import get_settings
+from ai_tutor.observability import observe_provider
 
 _CITATION = re.compile(r"[\[(][^\])]*صفح[^\])]*[\])]")
 _MARKDOWN = re.compile(r"\*\*|__|`+|(?m:^[ \t]*#{1,6}[ \t]+)")
@@ -320,24 +321,26 @@ def split_for_tts(text: str, max_chars: int) -> list[str]:
 def _synth_chunk(clean: str, voice: str, speed: str) -> bytes:
     settings = get_settings()
     url = f"https://{settings.azure_speech_region}.tts.speech.microsoft.com/cognitiveservices/v1"
-    response = httpx.post(
-        url,
-        headers={
-            "Ocp-Apim-Subscription-Key": settings.azure_speech_key,
-            "Content-Type": "application/ssml+xml",
-            "X-Microsoft-OutputFormat": settings.azure_tts_format,
-            "User-Agent": "ai-tutor",
-        },
-        content=_build_ssml(clean, voice, speed).encode("utf-8"),
-        timeout=settings.request_timeout,
-    )
-    if response.status_code == 429:
-        raise TtsError("Speech service busy", 429)
-    try:
-        response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise TtsError("Speech service failed", 502) from exc
-    return response.content
+    with observe_provider("azure", "tts", voice) as observed:
+        response = httpx.post(
+            url,
+            headers={
+                "Ocp-Apim-Subscription-Key": settings.azure_speech_key,
+                "Content-Type": "application/ssml+xml",
+                "X-Microsoft-OutputFormat": settings.azure_tts_format,
+                "User-Agent": "ai-tutor",
+            },
+            content=_build_ssml(clean, voice, speed).encode("utf-8"),
+            timeout=settings.request_timeout,
+        )
+        observed.status = response.status_code
+        if response.status_code == 429:
+            raise TtsError("Speech service busy", 429)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise TtsError("Speech service failed", 502) from exc
+        return response.content
 
 
 def synthesize(text: str, voice: str | None = None, rate: str | None = None) -> bytes:

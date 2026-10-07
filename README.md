@@ -174,6 +174,17 @@ extraction from it is garbled (presentation forms, no ToUnicode map). Real books
 must either extract cleanly or need OCR. `ingest_sample.py` bypasses extraction
 so the rest of the pipeline can be tested.
 
+## Observability
+
+The API emits structured request/provider logs with request IDs, final streaming
+outcomes, first-answer latency, durations, and safe failure categories. Provider
+usage is recorded when available. Conversation text, audio, and credentials are
+excluded. See [the operating guide](deploy/OBSERVABILITY.md) for retained systemd
+logs and an independent HTTPS health monitor with outage/recovery emails.
+
+The deployment and monitor files are templates; hosting and SMTP configuration
+are required before retention and email alerts are active.
+
 ## Layout
 
 ```

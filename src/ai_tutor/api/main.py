@@ -1,5 +1,4 @@
 import json
-import logging
 import threading
 import time
 import uuid
@@ -21,19 +20,27 @@ from ai_tutor.books import display_book_title, list_books
 from ai_tutor.config import get_settings
 from ai_tutor.db import SessionLocal, engine, session_scope
 from ai_tutor.models import Book, ChatSession, Message
+from ai_tutor.observability import (
+    RequestLoggingMiddleware,
+    configure_logging,
+    mark_chat_started,
+    mark_first_text,
+    mark_outcome,
+)
 from ai_tutor.openrouter import generation_deadline
 from ai_tutor.stt import MAX_AUDIO_BYTES, SttError, transcribe
 from ai_tutor.tts import TtsError, synthesize
 from ai_tutor.tutor.service import answer_stream
 
 app = FastAPI(title="AI Tutor", version="0.2.0")
-logger = logging.getLogger(__name__)
+configure_logging()
+app.add_middleware(RequestLoggingMiddleware)
 slots = threading.BoundedSemaphore(max(1, get_settings().tutor_max_concurrent))
 
 
 @app.exception_handler(SQLAlchemyError)
 async def database_error(request, exc):
-    logger.warning("Tutor database operation failed")
+    mark_outcome("failed", exc)
     return JSONResponse({"detail": "Tutor database is unavailable"}, status_code=503)
 
 
@@ -147,7 +154,9 @@ def get_sessions(identity: Annotated[Identity, Depends(require_identity)]) -> li
             .limit(100)
         )
         return [
-            session_out(s, book) for s, book in sessions if normalize_grade(book.grade) == identity.grade
+            session_out(s, book)
+            for s, book in sessions
+            if normalize_grade(book.grade) == identity.grade
         ]
 
 
@@ -212,6 +221,7 @@ def chat(
         raise
 
     iterator = answer_stream(db, session=session, user_message=payload.message)
+    mark_chat_started()
     started = time.monotonic()
     closed = False
     cleanup_lock = threading.Lock()
@@ -239,6 +249,7 @@ def chat(
                     raise TimeoutError("Generation deadline exceeded")
                 if item is None:
                     await run_in_threadpool(db.commit)
+                    mark_outcome("completed")
                     yield event({"done": True})
                     break
                 if item.sources is not None:
@@ -250,9 +261,17 @@ def chat(
                         }
                     )
                 if item.delta:
+                    mark_first_text()
                     yield event({"delta": item.delta})
-        except (SQLAlchemyError, RuntimeError, httpx.HTTPError, TimeoutError, ValueError, KeyError):
-            logger.warning("Tutor generation failed for session %s", payload.session_id)
+        except (
+            SQLAlchemyError,
+            RuntimeError,
+            httpx.HTTPError,
+            TimeoutError,
+            ValueError,
+            KeyError,
+        ) as exc:
+            mark_outcome("failed", exc)
             yield event({"error": "تعذر إكمال الإجابة. يرجى المحاولة لاحقاً."})
         finally:
             generation_deadline.reset(deadline_token)
@@ -307,7 +326,9 @@ def speech_to_text(
 
 class TtsIn(BaseModel):
     text: str = Field(min_length=1, max_length=12000)
-    rate: str | None = Field(default=None, pattern=r"^(?:[+-]?\d{1,3}%|x-slow|slow|medium|fast|x-fast)$")
+    rate: str | None = Field(
+        default=None, pattern=r"^(?:[+-]?\d{1,3}%|x-slow|slow|medium|fast|x-fast)$"
+    )
 
 
 @app.post("/api/tts")
@@ -318,7 +339,9 @@ def text_to_speech(
         raise HTTPException(429, "Tutor is busy. Try again shortly")
     try:
         audio = synthesize(payload.text, rate=payload.rate)
-        return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+        return Response(
+            content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"}
+        )
     except TtsError as exc:
         raise HTTPException(exc.status_code, "Speech synthesis unavailable") from exc
     except httpx.HTTPError as exc:

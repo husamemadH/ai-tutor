@@ -1,0 +1,24 @@
+[Unit]
+Description=AI Tutor API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ai-tutor
+Group=ai-tutor
+WorkingDirectory=/opt/ai-tutor
+EnvironmentFile=/etc/ai-tutor/tutor.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/ai-tutor/.venv/bin/uvicorn ai_tutor.api.main:app --host 127.0.0.1 --port 8092 --workers 1 --no-access-log
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+LogNamespace=ai-tutor
+
+[Install]
+WantedBy=multi-user.target

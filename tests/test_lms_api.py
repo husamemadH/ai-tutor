@@ -159,6 +159,10 @@ def test_stream_persistence_followups_and_owner_isolation(api):
 
 
 def test_failed_generation_rolls_back_partial_turn(api, monkeypatch):
+    from ai_tutor import observability
+
+    logged = []
+    monkeypatch.setattr(observability, "log_event", lambda event, **fields: logged.append(fields))
     client, headers, _, _, factory, _ = api
     sid = session(api)
 
@@ -174,6 +178,12 @@ def test_failed_generation_rolls_back_partial_turn(api, monkeypatch):
     assert "error" in data[-1]
     assert not any(item.get("done") for item in data)
     assert "provider-secret" not in response.text
+    assert response.status_code == 200
+    request_log = logged[-1]
+    assert request_log["outcome"] == "failed"
+    assert request_log["first_text_ms"] is not None
+    assert request_log["request_id"] == response.headers["x-request-id"]
+    assert "provider-secret" not in json.dumps(logged)
     with factory() as db:
         assert db.scalar(select(func.count()).select_from(Message)) == 0
         assert not db.get(ChatSession, uuid.UUID(sid)).pinned_chunk_ids
@@ -285,9 +295,12 @@ def test_voice_auth_limits_and_vocalized_payloads(api, monkeypatch):
     assert response.json() == {"text": "ما هي القوة؟"}
     assert calls[-1] == (b"x" * 500, "clip.webm", "audio/webm")
     count = len(calls)
-    assert client.post(
-        "/api/stt", headers=headers, files={"file": ("clip.webm", b"x" * 1500001)}
-    ).status_code == 413
+    assert (
+        client.post(
+            "/api/stt", headers=headers, files={"file": ("clip.webm", b"x" * 1500001)}
+        ).status_code
+        == 413
+    )
     assert len(calls) == count
     text = "القُوَّةُ تُؤَثِّرُ عَلَى الحَرَكَةِ."
     response = client.post("/api/tts", headers=headers, json={"text": text, "rate": "-25%"})
@@ -296,7 +309,7 @@ def test_voice_auth_limits_and_vocalized_payloads(api, monkeypatch):
     assert response.headers["cache-control"] == "no-store"
     assert calls[-1] == (text, "-25%")
     count = len(calls)
-    for payload in ({"text": "x" * 12001}, {"text": "x", "rate": '<bad>'}):
+    for payload in ({"text": "x" * 12001}, {"text": "x", "rate": "<bad>"}):
         assert client.post("/api/tts", headers=headers, json=payload).status_code == 422
     assert len(calls) == count
 

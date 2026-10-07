@@ -3,6 +3,7 @@ from pathlib import Path
 import httpx
 
 from ai_tutor.config import get_settings
+from ai_tutor.observability import observe_provider
 
 MIN_AUDIO_BYTES = 400
 MAX_AUDIO_BYTES = 1_500_000
@@ -28,11 +29,14 @@ def transcribe(audio: bytes, filename: str, content_type: str | None) -> str:
         filename = "clip.webm"
         content_type = content_type or "audio/webm"
 
-    with httpx.Client(
-        base_url=settings.groq_base_url,
-        headers={"Authorization": f"Bearer {settings.groq_api_key}"},
-        timeout=settings.request_timeout,
-    ) as client:
+    with (
+        observe_provider("groq", "stt", settings.stt_model) as observed,
+        httpx.Client(
+            base_url=settings.groq_base_url,
+            headers={"Authorization": f"Bearer {settings.groq_api_key}"},
+            timeout=settings.request_timeout,
+        ) as client,
+    ):
         response = client.post(
             "/audio/transcriptions",
             files={
@@ -48,10 +52,11 @@ def transcribe(audio: bytes, filename: str, content_type: str | None) -> str:
                 "temperature": "0",
             },
         )
-    if response.status_code == 429:
-        raise SttError("Speech service busy", 429)
-    try:
-        response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise SttError("Speech service failed", 502) from exc
-    return (response.json().get("text") or "").strip()
+        observed.status = response.status_code
+        if response.status_code == 429:
+            raise SttError("Speech service busy", 429)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise SttError("Speech service failed", 502) from exc
+        return (response.json().get("text") or "").strip()
