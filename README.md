@@ -114,6 +114,26 @@ uv run ai-tutor chat
 
 ## Testing
 
+To compare stored math equations with the local PDFs without paid OCR or provider
+calls, run:
+
+```bash
+uv run scripts/audit_textbooks.py
+uv run scripts/audit_textbooks.py --book-title math91 --output dist/math91-audit
+```
+
+The script uses a read-only database transaction and writes `SUMMARY.md` plus
+`audit.json` under the output directory (default `dist/textbook-audit`, ignored by
+Git). It flags likely missing numbers, negative terms, variables, and operators
+in similar equality expressions. PDF word positions help recover superscripts;
+formatting differences and Arabic/Latin digits are normalized for comparison.
+
+Review candidates against the rendered PDF before correcting anything. The PDF
+text layer can also be wrong, and the audit does not establish semantic
+equivalence or validate every equation. Missing PDFs, scanned pages, complex
+fraction layouts, and equations without a similar stored candidate need separate
+review. No books, chunks, embeddings, or runtime retrieval settings are changed.
+
 ```bash
 uv run pytest                 # offline unit tests (no API/DB)
 
