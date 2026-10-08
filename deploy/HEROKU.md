@@ -13,9 +13,10 @@ Ingestion and OCR run on the workstation, outside the web dyno.
 
 ## Active deployment — October 8, 2026
 
-- App: `futurix-ai-tutor`, Heroku-24, US region, one Basic web dyno.
-- API: https://futurix-ai-tutor-a23b549f1136.herokuapp.com
-- Database: `postgresql-reticulated-51885`, Essential-0, PostgreSQL 17.10,
+- App: `futurix-ai-tutor-eu`, Heroku-24, Europe region, one Basic web dyno.
+- API: https://futurix-ai-tutor-eu-4841b97391f8.herokuapp.com
+- Database: `postgresql-curved-58234`, Essential-0, PostgreSQL 17.10,
+  Ireland (`eu-west-1`),
   pgvector 0.8.2. Restored 35 books and 5,836 chunks, covering grades 1–10;
   database size was approximately 47 MiB after import.
 - The existing dev frontend at https://lms-frontend-dev-eight.vercel.app uses
@@ -27,7 +28,7 @@ Ingestion and OCR run on the workstation, outside the web dyno.
 - Daily logical backups run at 02:00 UTC. Initial backup `b001` was downloaded
   and restored into an isolated local database; all 35 books, 5,836 chunks, and
   1,024-dimensional embeddings were verified. The temporary database was removed.
-- Runtime memory logging is enabled. Four simultaneous real chat requests
+- Runtime memory logging is enabled. Before the region migration, four simultaneous real chat requests
   completed in 6.3–6.8 seconds, with persisted histories. The highest reported
   memory sample through those checks was about 74 MB of the 512 MB quota, with
   no swap, memory-limit errors, or router timeout errors. These are sampled
@@ -35,6 +36,16 @@ Ingestion and OCR run on the workstation, outside the web dyno.
 - All ten grade test accounts passed login and book filtering through the dev
   LMS. Chat, history, ownership checks, STT, and TTS passed through its proxy.
   The tutor suite passed 86 tests with the PostgreSQL tests enabled.
+- Europe migration verification passed: all ten grade accounts and book filters,
+  streamed chat, history persisted in the European database, rejection of another
+  student's history request, and STT/TTS through the hosted dev backend.
+  Row counts and content fingerprints matched for all four migrated tables.
+  European backup `b001` was downloaded and restored locally, verifying all books,
+  chunks, and embedding dimensions before the temporary database was removed.
+- The old US app `futurix-ai-tutor` and database `postgresql-reticulated-51885`
+  were deleted after verification. Both resource lookups returned HTTP 404;
+  the account inventory contained only the European app and database.
+  A final full US database backup is retained privately as `us-final-full-backup.dump`.
 
 Private deployment state, configuration, backups, and verification reports are
 on the operator workstation under
@@ -44,6 +55,9 @@ recovery emails on October 8, 2026. A controlled maintenance test verified
 HTTP 503 during the outage and healthy HTTP 200 after restoration. Email receipt
 is recorded from the owner's confirmation; the dashboard was not inspected.
 The free plan checks every five minutes and sends outage/recovery emails.
+That delivery test used the former US URL. After migration, the owner confirmed
+updating the existing monitor to the European `/health` URL with email alerts enabled;
+no second deliberate outage was performed.
 See [the monitoring guide](OBSERVABILITY.md). Lightsail was removed at the
 owner's request after a final full database backup was saved locally.
 
@@ -54,7 +68,7 @@ Heroku's Python buildpack uses `.python-version`, `pyproject.toml`, and
 schema initialization plus the existing ownership migration during release.
 The app accepts Heroku's PostgreSQL URL and selects its installed psycopg driver.
 
-Create an app on the `heroku-24` stack in the `us` region, provision
+Create an app on the `heroku-24` stack in the `eu` region, provision
 `heroku-postgresql:essential-0` with PostgreSQL 17, and select a Basic web dyno.
 Use the account that has the student credit. Before adding resources, check
 existing app and add-on charges against the monthly allowance.
@@ -65,10 +79,15 @@ Preserve Heroku's managed `DATABASE_URL`; credentials can rotate. Set a private
 current chat, embedding, STT, and TTS settings. Keep secrets out of Git and
 terminal output. Provider changes are separate from this hosting migration.
 
-Deploy the reviewed tutor commit, then restore only `books` and `chunks` from
+For a fresh deployment, deploy the reviewed tutor commit, then restore only `books` and `chunks` from
 the private `db-data` release into the empty database. Do not run OCR again or
 copy local test conversations. PDFs are unnecessary for serving existing books.
 Verify restored counts and grade coverage before connecting the LMS.
+
+For a region migration, stop writes to the source app and take a full database
+backup, including sessions and messages. Restore into the new database, compare
+all table contents, verify the dev integration and backups, then delete the old
+app and its database. Update the external uptime monitor to the new address.
 
 ## Verification and operation
 

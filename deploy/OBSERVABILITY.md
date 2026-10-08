@@ -76,7 +76,7 @@ cannot be reached.
 
 The selected option is UptimeRobot's free hosted HTTPS monitor for:
 
-`https://futurix-ai-tutor-a23b549f1136.herokuapp.com/health`
+`https://futurix-ai-tutor-eu-4841b97391f8.herokuapp.com/health`
 
 On October 8, 2026, the owner confirmed activation and receipt of both outage
 and recovery emails during a controlled Heroku maintenance test. The public
@@ -84,6 +84,10 @@ health URL returned HTTP 503 during the outage, then HTTP 200 with `status: ok`
 and `database: true` after restoration. An independent watchdog limited the
 test outage to seven minutes; the service was restored after about two minutes.
 Email delivery is verified by the owner's confirmation, without dashboard access.
+This test used the original US deployment. After migration to Europe later that
+day, the owner confirmed changing the existing monitor to the URL above while
+keeping email alerts enabled. The European endpoint passed its health check;
+no second deliberate outage was performed after the URL change.
 For future setup, opening the email link alone does not
 create the monitor: the owner must also click **Activate** on the confirmation
 page. Submission HTTP 200 alone does not prove activation.

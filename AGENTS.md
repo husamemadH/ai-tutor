@@ -99,9 +99,9 @@ persisted citation metadata without claiming legacy sessions. Health returns
 process-level generation limit. The backend adapter forwards SSE through
 `/api/tutor`; service and provider credentials never go to the browser.
 
-The active hosted tutor is `futurix-ai-tutor` on Heroku, connected to the isolated
+The active hosted tutor is `futurix-ai-tutor-eu` in Heroku's Europe region, connected to the isolated
 Futurix dev projects. See `deploy/HEROKU.md` for configuration, verified capacity,
-and backups. The earlier Lightsail deployment was deleted on October 8, 2026;
+and backups. The earlier US Heroku app/database and Lightsail deployment were deleted on October 8, 2026;
 its final database backup is retained privately on the operator workstation. Keep
 Futurix production repositories and deployments separate from this dev setup.
 
