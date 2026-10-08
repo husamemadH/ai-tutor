@@ -11,6 +11,37 @@ embeddings into the web dyno. Keep one worker and the existing four-generation
 limit, and check memory under concurrent use before increasing capacity.
 Ingestion and OCR run on the workstation, outside the web dyno.
 
+## Active deployment — October 8, 2026
+
+- App: `futurix-ai-tutor`, Heroku-24, US region, one Basic web dyno.
+- API: https://futurix-ai-tutor-a23b549f1136.herokuapp.com
+- Database: `postgresql-reticulated-51885`, Essential-0, PostgreSQL 17.10,
+  pgvector 0.8.2. Restored 35 books and 5,836 chunks, covering grades 1–10;
+  database size was approximately 47 MiB after import.
+- The existing dev frontend at https://lms-frontend-dev-eight.vercel.app uses
+  https://lms-backend-dev.vercel.app, whose tutor origin now points to Heroku.
+  Futurix production deployments and repository `main` branches were unchanged.
+- Hosting migration keeps Groq Whisper STT and Azure TTS. Testing or switching
+  to Azure STT is separate work. The existing Azure trial expiry still applies;
+  see [the resource migration plan](../FEATURE_IDEAS.md).
+- Daily logical backups run at 02:00 UTC. Initial backup `b001` was downloaded
+  and restored into an isolated local database; all 35 books, 5,836 chunks, and
+  1,024-dimensional embeddings were verified. The temporary database was removed.
+- Runtime memory logging is enabled. Four simultaneous real chat requests
+  completed in 6.3–6.8 seconds, with persisted histories. The highest reported
+  memory sample through those checks was about 74 MB of the 512 MB quota, with
+  no swap, memory-limit errors, or router timeout errors. These are sampled
+  measurements of a small test, not a maximum-capacity guarantee.
+- All ten grade test accounts passed login and book filtering through the dev
+  LMS. Chat, history, ownership checks, STT, and TTS passed through its proxy.
+  The tutor suite passed 86 tests with the PostgreSQL tests enabled.
+
+Private deployment state, configuration, backups, and verification reports are
+on the operator workstation under
+`~/.local/share/ai-tutor/deployments/heroku/`. Do not commit that directory.
+Email outage monitoring still needs activation. Lightsail remains available
+and continues billing until explicitly deleted.
+
 ## Build and configuration
 
 Heroku's Python buildpack uses `.python-version`, `pyproject.toml`, and

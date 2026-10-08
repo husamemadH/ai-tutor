@@ -95,9 +95,14 @@ is no longer served; CLI chat is unaffected.
 Run `uv run scripts/migrate_lms.py` against existing databases before starting
 the integrated API. It adds nullable ownership fields, an ownership index, and
 persisted citation metadata without claiming legacy sessions. Health returns
-503 for unavailable or unmigrated databases. Use one worker for the pilot's
+503 for unavailable or unmigrated databases. Use one worker for the deployment's
 process-level generation limit. The backend adapter forwards SSE through
 `/api/tutor`; service and provider credentials never go to the browser.
+
+The active hosted tutor is `futurix-ai-tutor` on Heroku, connected to the isolated
+Futurix dev projects. See `deploy/HEROKU.md` for configuration, verified capacity,
+and backups. The earlier Lightsail deployment is retained for rollback. Keep
+Futurix production repositories and deployments separate from this dev setup.
 
 `tests/test_lms_api.py` requires `TUTOR_TEST_DATABASE_URL` and creates/removes
 isolated PostgreSQL schemas; other tests run offline. Test schemas require the
