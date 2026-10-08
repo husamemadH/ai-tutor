@@ -176,6 +176,8 @@ so the rest of the pipeline can be tested.
 
 ## Observability
 
+For managed hosting, see [Heroku deployment](deploy/HEROKU.md).
+
 The API emits structured request/provider logs with request IDs, final streaming
 outcomes, first-answer latency, durations, and safe failure categories. Provider
 usage is recorded when available. Conversation text, audio, and credentials are
