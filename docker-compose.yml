@@ -2,6 +2,7 @@ services:
   db:
     image: pgvector/pgvector:pg17
     container_name: ai-tutor-db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ai_tutor
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ai_tutor}
