@@ -78,10 +78,13 @@ The selected option is UptimeRobot's free hosted HTTPS monitor for:
 
 `https://futurix-ai-tutor-a23b549f1136.herokuapp.com/health`
 
-On October 8, 2026, the owner confirmed successful activation after the request
-was submitted to the confirmed email. This records the owner's confirmation;
-dashboard configuration and outage/recovery email delivery have not been
-independently tested. For future setup, opening the email link alone does not
+On October 8, 2026, the owner confirmed activation and receipt of both outage
+and recovery emails during a controlled Heroku maintenance test. The public
+health URL returned HTTP 503 during the outage, then HTTP 200 with `status: ok`
+and `database: true` after restoration. An independent watchdog limited the
+test outage to seven minutes; the service was restored after about two minutes.
+Email delivery is verified by the owner's confirmation, without dashboard access.
+For future setup, opening the email link alone does not
 create the monitor: the owner must also click **Activate** on the confirmation
 page. Submission HTTP 200 alone does not prove activation.
 
@@ -94,8 +97,8 @@ failures remain visible in the tutor logs.
 
 UptimeRobot runs the checks and handles email delivery. No monitor process has
 been installed on Heroku. After activation, verify the dashboard has the correct
-URL, expected healthy status, and enabled email contact. Validate notification
-delivery before treating alerts as operationally tested.
+URL, expected healthy status, and enabled email contact. Repeat the delivery test
+after changing the monitored URL or notification contact.
 
 Reference: [UptimeRobot setup and activation](https://uptimerobot.com/quick-monitor-setup/),
 [free-plan monitoring interval](https://help.uptimerobot.com/en/articles/11360876-what-is-a-monitoring-interval-in-uptimerobot).

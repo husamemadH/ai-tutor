@@ -39,11 +39,11 @@ Ingestion and OCR run on the workstation, outside the web dyno.
 Private deployment state, configuration, backups, and verification reports are
 on the operator workstation under
 `~/.local/share/ai-tutor/deployments/heroku/`. Do not commit that directory.
-The owner confirmed UptimeRobot activation on October 8 for the Heroku `/health`
-URL and the confirmed email. Activation is recorded from that confirmation;
-dashboard configuration and outage/recovery email delivery have not been
-independently tested. The free plan checks every five minutes and sends
-outage/recovery emails.
+The owner confirmed UptimeRobot activation and receipt of both outage and
+recovery emails on October 8, 2026. A controlled maintenance test verified
+HTTP 503 during the outage and healthy HTTP 200 after restoration. Email receipt
+is recorded from the owner's confirmation; the dashboard was not inspected.
+The free plan checks every five minutes and sends outage/recovery emails.
 See [the monitoring guide](OBSERVABILITY.md). Lightsail was removed at the
 owner's request after a final full database backup was saved locally.
 
