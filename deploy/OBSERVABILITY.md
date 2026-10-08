@@ -78,12 +78,12 @@ The selected option is UptimeRobot's free hosted HTTPS monitor for:
 
 `https://futurix-ai-tutor-a23b549f1136.herokuapp.com/health`
 
-On October 8, 2026, an activation request was submitted to the owner's
-confirmed email. It is pending activation. The owner must open the email link
-and click **Activate** on the confirmation page; opening the link alone does
-not create the monitor. Submission HTTP 200 does not prove email delivery or
-activation. Record activation only after the owner confirms it or the monitor
-is verified in its dashboard.
+On October 8, 2026, the owner confirmed successful activation after the request
+was submitted to the confirmed email. This records the owner's confirmation;
+dashboard configuration and outage/recovery email delivery have not been
+independently tested. For future setup, opening the email link alone does not
+create the monitor: the owner must also click **Activate** on the confirmation
+page. Submission HTTP 200 alone does not prove activation.
 
 The free plan checks every five minutes. A confirmed unreachable endpoint or
 unhealthy HTTP status triggers an outage email; recovery triggers another.
