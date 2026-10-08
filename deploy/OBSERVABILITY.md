@@ -72,6 +72,36 @@ cannot be reached.
 
 ## External health check with email alerts
 
+### Hosted monitor for Heroku
+
+The selected option is UptimeRobot's free hosted HTTPS monitor for:
+
+`https://futurix-ai-tutor-a23b549f1136.herokuapp.com/health`
+
+On October 8, 2026, an activation request was submitted to the owner's
+confirmed email. It is pending activation. The owner must open the email link
+and click **Activate** on the confirmation page; opening the link alone does
+not create the monitor. Submission HTTP 200 does not prove email delivery or
+activation. Record activation only after the owner confirms it or the monitor
+is verified in its dashboard.
+
+The free plan checks every five minutes. A confirmed unreachable endpoint or
+unhealthy HTTP status triggers an outage email; recovery triggers another.
+The tutor returns HTTP 503 when its database health check fails, so this covers
+both service and database availability. This monitor does not call paid AI
+providers, inspect student conversations, or detect wrong answers. Provider
+failures remain visible in the tutor logs.
+
+UptimeRobot runs the checks and handles email delivery. No monitor process has
+been installed on Heroku. After activation, verify the dashboard has the correct
+URL, expected healthy status, and enabled email contact. Validate notification
+delivery before treating alerts as operationally tested.
+
+Reference: [UptimeRobot setup and activation](https://uptimerobot.com/quick-monitor-setup/),
+[free-plan monitoring interval](https://help.uptimerobot.com/en/articles/11360876-what-is-a-monitoring-interval-in-uptimerobot).
+
+### Existing Python monitor alternative
+
 Install the monitor on a separate, continuously running machine. Running it on
 the tutor host would miss a whole-server outage. `scripts/check_health.py` uses
 only Python's standard library and performs one bounded HTTPS request per run.

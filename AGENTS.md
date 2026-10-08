@@ -101,7 +101,8 @@ process-level generation limit. The backend adapter forwards SSE through
 
 The active hosted tutor is `futurix-ai-tutor` on Heroku, connected to the isolated
 Futurix dev projects. See `deploy/HEROKU.md` for configuration, verified capacity,
-and backups. The earlier Lightsail deployment is retained for rollback. Keep
+and backups. The earlier Lightsail deployment was deleted on October 8, 2026;
+its final database backup is retained privately on the operator workstation. Keep
 Futurix production repositories and deployments separate from this dev setup.
 
 `tests/test_lms_api.py` requires `TUTOR_TEST_DATABASE_URL` and creates/removes

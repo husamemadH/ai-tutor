@@ -39,8 +39,12 @@ Ingestion and OCR run on the workstation, outside the web dyno.
 Private deployment state, configuration, backups, and verification reports are
 on the operator workstation under
 `~/.local/share/ai-tutor/deployments/heroku/`. Do not commit that directory.
-Email outage monitoring still needs activation. Lightsail remains available
-and continues billing until explicitly deleted.
+An UptimeRobot activation request was submitted on October 8 for the Heroku
+`/health` URL and the owner's confirmed email. Monitoring is pending the owner
+opening the activation email and pressing **Activate** on its confirmation
+page. The free plan checks every five minutes and sends outage/recovery emails.
+See [the monitoring guide](OBSERVABILITY.md). Lightsail was removed at the
+owner's request after a final full database backup was saved locally.
 
 ## Build and configuration
 
@@ -84,14 +88,14 @@ an isolated local database. Use `heroku logs --tail --app APP` for the tutor's
 structured request/provider events. Chat text stays in PostgreSQL; audio is
 not stored. Heroku's temporary filesystem is unsuitable for persistent data.
 
-An external HTTPS monitor still needs its own host and SMTP configuration.
-See [OBSERVABILITY.md](OBSERVABILITY.md) for the existing monitor. Point it at
-the new origin when configured. Heroku logs are not a replacement for retained
-backups or tested outage notifications.
+The selected hosted uptime monitor runs externally and delivers email itself.
+The existing Python monitor in [OBSERVABILITY.md](OBSERVABILITY.md) remains an
+alternative requiring its own host and SMTP configuration. Heroku logs are not
+a replacement for retained backups or tested outage notifications.
 
-Keep the Lightsail deployment available during verification. Removing its
-instance or database is a separate destructive action; stopping an instance
-does not end its monthly bundle charge.
+The previous Lightsail deployment was deleted on October 8, including its
+static IP and SSH key pair. Its final full database backup is retained privately
+at `~/.local/share/ai-tutor/deployments/lightsail-dev/final-database-backup.dump`.
 
 References: [dyno sizes](https://devcenter.heroku.com/articles/dyno-sizes),
 [Postgres plans](https://devcenter.heroku.com/articles/heroku-postgres-plans),

@@ -1,8 +1,10 @@
 # Lightsail development deployment
 
 As of October 8, 2026, the dev LMS uses the [Heroku deployment](HEROKU.md).
-The Lightsail instance remains available for rollback and continues billing.
-The instructions below describe that retained deployment.
+The old Lightsail instance, static IP, and deployment SSH key pair were removed
+at the owner's request. A final full database backup is retained privately at
+`~/.local/share/ai-tutor/deployments/lightsail-dev/final-database-backup.dump`.
+The instructions below are an archive of that deployment.
 
 Run the tutor and PostgreSQL on one Ubuntu 24.04 instance. The 2 GB Linux/IPv4
 bundle is `small_3_0`, currently $12/month, billed by the hour. The development
